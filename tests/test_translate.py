@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -45,7 +47,25 @@ def test_fallback_to_second_model(monkeypatch):
 
     t = OpenRouterTranslator("k", ["m1", "m2"], "sys", attempts=2, client=make_client(handler))
     assert t.translate_page("hi") == "DAL SECONDO"
-    assert calls["m1"] == 2  # exhausted attempts before fallback
+    assert calls["m1"] == 1  # failure → immediate fallback, no wasted retry on m1
+    assert t.last_model == "m2"
+
+
+def test_rate_limit_falls_back_immediately(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    calls = {"m1": 0, "m2": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content.decode())["model"]
+        calls[model] += 1
+        if model == "m1":
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(200, json=_response("OK2"))
+
+    t = OpenRouterTranslator("k", ["m1", "m2"], "sys", attempts=2, client=make_client(handler))
+    assert t.translate_page("hi") == "OK2"
+    assert calls["m1"] == 1  # rate-limited model not retried before falling back
+    assert calls["m2"] == 1
     assert t.last_model == "m2"
 
 
@@ -101,3 +121,21 @@ def test_translate_document_different_prompt_is_cache_miss(tmp_path, monkeypatch
     out2 = translate_document(doc, t_b, cache)
     assert out2.pages[0].markdown == "CIAO"
     assert count["n"] == 2
+
+
+def test_translate_document_parallel_preserves_mapping(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    pages = [Page(index=k, markdown=f"page-{k}") for k in range(6)]
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512", pages=pages)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # echo the page's own content back, so a mis-mapped result is detectable
+        user = json.loads(request.content.decode())["messages"][1]["content"]
+        return httpx.Response(200, json=_response(f"IT::{user}"))
+
+    t = OpenRouterTranslator("k", ["m1"], "sys", attempts=1, client=make_client(handler))
+    out = translate_document(doc, t, cache, concurrency=4)
+    # each translated page must correspond to its own source page despite parallelism
+    for k in range(6):
+        assert out.pages[k].markdown == f"IT::page-{k}"

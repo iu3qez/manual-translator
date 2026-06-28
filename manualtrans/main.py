@@ -69,7 +69,7 @@ def translate(
         s.openrouter_api_key, s.openrouter_models, system_prompt, attempts=s.model_attempts
     )
     cache = Cache(s.cache_dir)
-    out_doc = translate_document(doc, translator, cache)
+    out_doc = translate_document(doc, translator, cache, concurrency=s.translate_concurrency)
     out_doc.dump(out)
     typer.echo(f"wrote {out}")
 
@@ -145,9 +145,11 @@ def run(
     )
     models_label = ", ".join(s.openrouter_models) or "(none configured!)"
     typer.echo(
-        f"[2/4] Translating {len(doc.pages)} page(s) [models: {models_label}]…", err=True
+        f"[2/4] Translating {len(doc.pages)} page(s) [models: {models_label}; "
+        f"concurrency {s.translate_concurrency}]…",
+        err=True,
     )
-    doc_it = translate_document(doc, translator, cache)
+    doc_it = translate_document(doc, translator, cache, concurrency=s.translate_concurrency)
     doc_it.dump(doc_it_json)
     typer.echo(f"      → {doc_it_json}", err=True)
 

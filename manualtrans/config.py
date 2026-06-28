@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     output_formats: Annotated[list[str], NoDecode] = ["pdf", "docx"]
     header_footer_policy: str = "keep_once"
     model_attempts: int = 2
+    translate_concurrency: int = 8
     cache_dir: Path = Path(".cache")
 
     @field_validator("openrouter_models", "output_formats", mode="before")

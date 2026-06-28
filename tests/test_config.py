@@ -31,3 +31,24 @@ def test_get_settings_overrides(monkeypatch):
     monkeypatch.delenv("OCR_MODEL", raising=False)
     s = get_settings(ocr_model="mistral-ocr-latest")
     assert s.ocr_model == "mistral-ocr-latest"
+
+
+def test_dotenv_file_csv_parsing(tmp_path, monkeypatch):
+    # Regression: CSV list fields must parse from a .env FILE, not only from
+    # os.environ. The DotEnvSettingsSource otherwise JSON-decodes them and crashes.
+    for k in ["OPENROUTER_MODELS", "OUTPUT_FORMATS", "MISTRAL_API_KEY"]:
+        monkeypatch.delenv(k, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "MISTRAL_API_KEY=mk\n"
+        "OPENROUTER_MODELS=anthropic/claude-3.5-sonnet, google/gemini-2.0-flash-001\n"
+        "OUTPUT_FORMATS=pdf, docx\n",
+        encoding="utf-8",
+    )
+    s = Settings(_env_file=str(env))
+    assert s.openrouter_models == [
+        "anthropic/claude-3.5-sonnet",
+        "google/gemini-2.0-flash-001",
+    ]
+    assert s.output_formats == ["pdf", "docx"]
+    assert s.mistral_api_key == "mk"

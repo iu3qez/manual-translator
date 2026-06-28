@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _split_csv(value):
@@ -12,40 +13,16 @@ def _split_csv(value):
     return value
 
 
-class CustomEnvSettingsSource(EnvSettingsSource):
-    def prepare_field_value(self, field_name, field, value, value_is_complex):
-        if field_name in ("openrouter_models", "output_formats"):
-            return _split_csv(value) if isinstance(value, str) else value
-        return super().prepare_field_value(field_name, field, value, value_is_complex)
-
-
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls,
-        init_settings,
-        env_settings,
-        dotenv_settings,
-        file_secret_settings,
-    ):
-        return (
-            init_settings,
-            CustomEnvSettingsSource(settings_cls),
-            dotenv_settings,
-            file_secret_settings,
-        )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     mistral_api_key: str = ""
     openrouter_api_key: str = ""
-    openrouter_models: list[str] = []
+    # NoDecode stops pydantic-settings from JSON-decoding these from env/.env
+    # sources, so _parse_lists can split the comma-separated string instead.
+    openrouter_models: Annotated[list[str], NoDecode] = []
     ocr_model: str = "mistral-ocr-2512"
-    output_formats: list[str] = ["pdf", "docx"]
+    output_formats: Annotated[list[str], NoDecode] = ["pdf", "docx"]
     header_footer_policy: str = "keep_once"
     model_attempts: int = 2
     cache_dir: Path = Path(".cache")

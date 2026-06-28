@@ -123,6 +123,45 @@ def test_translate_document_different_prompt_is_cache_miss(tmp_path, monkeypatch
     assert count["n"] == 2
 
 
+def test_structure_mismatch_uses_second_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    # EN page has one heading; the first model drops it, the second keeps it.
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512",
+              pages=[Page(index=0, markdown="# Title\n\nbody")])
+    calls = {"weak": 0, "strong": 0}
+
+    def handler(request):
+        model = json.loads(request.content.decode())["model"]
+        calls[model] += 1
+        if model == "weak":
+            return httpx.Response(200, json=_response("testo senza titolo"))  # 0 headings
+        return httpx.Response(200, json=_response("# Titolo\n\ntesto"))  # 1 heading
+
+    t = OpenRouterTranslator("k", ["weak", "strong"], "sys", attempts=1, client=make_client(handler))
+    out = translate_document(doc, t, cache)
+    assert out.pages[0].markdown == "# Titolo\n\ntesto"  # second model's output kept
+    assert calls["weak"] == 1 and calls["strong"] == 1
+
+
+def test_structure_ok_does_not_call_second_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512",
+              pages=[Page(index=0, markdown="# Title\n\nbody")])
+    calls = {"weak": 0, "strong": 0}
+
+    def handler(request):
+        model = json.loads(request.content.decode())["model"]
+        calls[model] += 1
+        return httpx.Response(200, json=_response("# Titolo\n\ntesto"))  # 1 heading, matches
+
+    t = OpenRouterTranslator("k", ["weak", "strong"], "sys", attempts=1, client=make_client(handler))
+    out = translate_document(doc, t, cache)
+    assert out.pages[0].markdown == "# Titolo\n\ntesto"
+    assert calls["weak"] == 1 and calls["strong"] == 0  # second model untouched
+
+
 def test_translate_document_parallel_preserves_mapping(tmp_path, monkeypatch):
     monkeypatch.setattr("time.sleep", lambda *_: None)
     cache = Cache(tmp_path / "c")

@@ -8,9 +8,19 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 
 from .cache import Cache
+from .check import HEADING_RE, TR_RE
 from .models import Doc
 
 logger = logging.getLogger(__name__)
+
+
+def _structure_sig(markdown: str) -> tuple[int, int]:
+    """Structural fingerprint of a page: (heading count, table-row count).
+
+    A translated page whose fingerprint differs from its source page lost or
+    gained a heading/row — the model garbled the structure.
+    """
+    return (len(HEADING_RE.findall(markdown)), len(TR_RE.findall(markdown)))
 
 
 class TranslationError(Exception):
@@ -80,6 +90,18 @@ class OpenRouterTranslator:
                 time.sleep(2 ** attempt)
         raise TranslationError(f"all models failed; last error: {last_exc}")
 
+    def _call_with_retry(self, model: str, markdown: str) -> str:
+        """Call ONE specific model, retrying transient failures with backoff."""
+        last_exc: Exception | None = None
+        for attempt in range(self.attempts):
+            try:
+                return self._call(model, markdown)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < self.attempts - 1:
+                    time.sleep(2 ** attempt)
+        raise TranslationError(f"model {model} failed: {last_exc}")
+
 
 def translate_document(
     doc: Doc,
@@ -92,30 +114,57 @@ def translate_document(
     models_key = ",".join(translator.models)
     prompt_hash = hashlib.sha256(translator.system_prompt.encode("utf-8")).hexdigest()
     total = len(out.pages)
+    second = translator.models[1] if len(translator.models) >= 2 else None
 
-    # First pass (cheap, in order): serve cached pages, collect the rest.
-    pending: list[tuple[int, object, str]] = []
+    # First pass (cheap, in order): serve cached pages whose structure matches the
+    # source; collect the rest. A cached page whose structure is WRONG (the model
+    # dropped a heading/row) is re-translated with the second model — only those.
+    pending: list[tuple[int, object, str, str, str | None]] = []
     for i, page in enumerate(out.pages, start=1):
+        en_md = page.markdown  # out is a deep copy of the EN doc; still EN here
         key = cache.key(
             doc.source_hash, "translate", models_key, prompt_version, prompt_hash, str(page.index)
         )
         cached = cache.get(key)
         if cached is not None:
-            logger.info("translate: page %d/%d (cached)", i, total)
-            page.markdown = cached
+            if second is None or _structure_sig(cached) == _structure_sig(en_md):
+                logger.info("translate: page %d/%d (cached)", i, total)
+                page.markdown = cached
+                continue
+            # cached but structurally wrong → retry this page with the second model
+            pending.append((i, page, key, en_md, cached))
         else:
-            pending.append((i, page, key))
+            pending.append((i, page, key, en_md, None))
 
     if not pending:
         return out
 
-    def _work(item: tuple[int, object, str]) -> None:
-        i, page, key = item
-        logger.info("translate: page %d/%d translating…", i, total)
-        text, model = translator._translate_page_with_model(page.markdown)
+    def _work(item: tuple[int, object, str, str, str | None]) -> None:
+        i, page, key, en_md, cached_bad = item
+        target = _structure_sig(en_md)
+        if cached_bad is not None:
+            # already have the (structurally wrong) first-model output cached
+            text, model = cached_bad, translator.models[0]
+        else:
+            logger.info("translate: page %d/%d translating…", i, total)
+            text, model = translator._translate_page_with_model(en_md)
+
+        if second is not None and _structure_sig(text) != target:
+            try:
+                text, model = translator._call_with_retry(second, en_md), second
+                logger.info(
+                    "translate: page %d/%d structure mismatch → re-translated with %s",
+                    i, total, second,
+                )
+            except TranslationError as exc:
+                logger.warning(
+                    "translate: page %d/%d second model failed (%s); keeping first output",
+                    i, total, exc,
+                )
+
         cache.set(key, text)  # durable before assignment: a crash keeps the result
         page.markdown = text
-        logger.info("translate: page %d/%d done via %s", i, total, model)
+        logger.info("translate: page %d/%d via %s", i, total, model)
 
     # Each thread writes its own page object and a distinct cache file → no races.
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:

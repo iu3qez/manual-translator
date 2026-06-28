@@ -5,3 +5,13 @@ __pycache__/
 .env
 dist/
 *.egg-info/
+
+# generated pipeline artifacts (may contain copyrighted manual content)
+/media/
+*.doc.json
+*.doc_it.json
+*.docx
+*.pdf
+
+# brainstorming/subagent scratch
+.superpowers/

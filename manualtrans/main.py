@@ -130,7 +130,7 @@ def run(
     base = out
     doc_json = base.with_name(base.name + ".doc.json")
     doc_it_json = base.with_name(base.name + ".doc_it.json")
-    md_path = base.with_suffix(".md")
+    md_path = base.parent / (base.name + ".md")
     media = base.with_name("media")
 
     model = ocr_model or s.ocr_model

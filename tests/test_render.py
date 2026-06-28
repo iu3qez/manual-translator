@@ -36,6 +36,23 @@ def test_render_invokes_runner_per_format(tmp_path: Path):
     assert (tmp_path / "out.docx") in out
 
 
+def test_render_preserves_dotted_basename(tmp_path: Path):
+    # a version-numbered basename must not be truncated at the first dot
+    md = tmp_path / "in.md"
+    md.write_text("# hi", encoding="utf-8")
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+    def runner(cmd, **kwargs):
+        return Result()
+
+    out = render(md, tmp_path / "manual-1.04_001", ["pdf", "docx"], tmp_path / "media", runner=runner)
+    assert (tmp_path / "manual-1.04_001.pdf") in out
+    assert (tmp_path / "manual-1.04_001.docx") in out
+
+
 def test_render_raises_on_failure(tmp_path: Path):
     md = tmp_path / "in.md"
     md.write_text("# hi", encoding="utf-8")

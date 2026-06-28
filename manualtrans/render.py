@@ -38,7 +38,9 @@ def render(
     for fmt in formats:
         if fmt not in SUFFIX:
             raise RenderError(f"unsupported format: {fmt}")
-        out_path = out_base.with_suffix(SUFFIX[fmt])
+        # append the extension instead of with_suffix: basenames legitimately
+        # contain dots (e.g. version numbers like "manual-1.04_001").
+        out_path = out_base.parent / (out_base.name + SUFFIX[fmt])
         cmd = build_pandoc_cmd(md_path, out_path, media_dir)
         result = runner(cmd, capture_output=True, text=True)
         if result.returncode != 0:

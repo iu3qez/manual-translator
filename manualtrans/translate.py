@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 
@@ -76,9 +77,10 @@ def translate_document(
 ) -> Doc:
     out = doc.model_copy(deep=True)
     models_key = ",".join(translator.models)
+    prompt_hash = hashlib.sha256(translator.system_prompt.encode("utf-8")).hexdigest()
     for page in out.pages:
         key = cache.key(
-            doc.source_hash, "translate", models_key, prompt_version, str(page.index)
+            doc.source_hash, "translate", models_key, prompt_version, prompt_hash, str(page.index)
         )
         cached = cache.get(key)
         if cached is not None:

@@ -101,6 +101,7 @@ def run(
     ocr_model: Optional[str] = typer.Option(None, "--ocr-model"),
     to: Optional[str] = typer.Option(None, "--to"),
     glossary: Path = typer.Option(Path("glossary.yaml"), "--glossary"),
+    force: bool = typer.Option(False, "--force", help="proceed to render even if structure-parity checks fail"),
 ):
     s = get_settings()
     cache = Cache(s.cache_dir)
@@ -123,6 +124,10 @@ def run(
 
     problems = check_document(doc_it, doc)
     if problems:
+        if not force:
+            for p in problems:
+                typer.echo(f"FAIL: {p}", err=True)
+            raise typer.Exit(code=1)
         for p in problems:
             typer.echo(f"WARN: {p}", err=True)
 

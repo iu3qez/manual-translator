@@ -78,3 +78,26 @@ def test_translate_document_uses_cache(tmp_path, monkeypatch):
     out2 = translate_document(doc, t, cache)
     assert out2.pages[0].markdown == "CIAO"
     assert count["n"] == 1
+
+
+def test_translate_document_different_prompt_is_cache_miss(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512",
+              pages=[Page(index=0, markdown="hello")])
+    count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        count["n"] += 1
+        return httpx.Response(200, json=_response("CIAO"))
+
+    shared_client = make_client(handler)
+    t_a = OpenRouterTranslator("k", ["m1"], "system prompt A", attempts=1, client=shared_client)
+    t_b = OpenRouterTranslator("k", ["m1"], "system prompt B", attempts=1, client=shared_client)
+
+    out1 = translate_document(doc, t_a, cache)
+    assert out1.pages[0].markdown == "CIAO"
+    # translator B has a different system prompt → different cache key → must NOT reuse A's entry
+    out2 = translate_document(doc, t_b, cache)
+    assert out2.pages[0].markdown == "CIAO"
+    assert count["n"] == 2

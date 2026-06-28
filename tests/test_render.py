@@ -2,14 +2,29 @@ from pathlib import Path
 
 import pytest
 
-from manualtrans.render import build_pandoc_cmd, render, RenderError
+from manualtrans.render import (
+    build_html_cmd,
+    build_pandoc_cmd,
+    build_weasyprint_cmd,
+    render,
+    RenderError,
+)
 
 
-def test_pdf_cmd_uses_weasyprint(tmp_path: Path):
-    cmd = build_pandoc_cmd(tmp_path / "in.md", tmp_path / "out.pdf", tmp_path / "media")
+def test_html_cmd_inlines_images(tmp_path: Path):
+    # the intermediate HTML for the PDF path must embed images as data URIs
+    cmd = build_html_cmd(tmp_path / "in.md", tmp_path / "out.html", tmp_path / "media")
     assert "pandoc" in cmd[0]
-    assert "--pdf-engine=weasyprint" in cmd
+    assert "--embed-resources" in cmd
+    assert "--standalone" in cmd
     assert any(a.startswith("--resource-path=") for a in cmd)
+
+
+def test_weasyprint_cmd(tmp_path: Path):
+    cmd = build_weasyprint_cmd(tmp_path / "in.html", tmp_path / "out.pdf")
+    assert cmd[0] == "weasyprint"
+    assert str(tmp_path / "in.html") in cmd
+    assert str(tmp_path / "out.pdf") in cmd
 
 
 def test_docx_cmd_no_pdf_engine(tmp_path: Path):
@@ -31,9 +46,12 @@ def test_render_invokes_runner_per_format(tmp_path: Path):
         return Result()
 
     out = render(md, tmp_path / "out", ["pdf", "docx"], tmp_path / "media", runner=runner)
-    assert len(calls) == 2
+    # pdf = pandoc(html) + weasyprint (2 calls), docx = pandoc (1 call)
+    assert len(calls) == 3
     assert (tmp_path / "out.pdf") in out
     assert (tmp_path / "out.docx") in out
+    # the pdf path runs weasyprint
+    assert any(c[0] == "weasyprint" for c in calls)
 
 
 def test_render_preserves_dotted_basename(tmp_path: Path):

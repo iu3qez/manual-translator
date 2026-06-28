@@ -78,15 +78,19 @@ def translate_document(
     out = doc.model_copy(deep=True)
     models_key = ",".join(translator.models)
     prompt_hash = hashlib.sha256(translator.system_prompt.encode("utf-8")).hexdigest()
-    for page in out.pages:
+    total = len(out.pages)
+    for i, page in enumerate(out.pages, start=1):
         key = cache.key(
             doc.source_hash, "translate", models_key, prompt_version, prompt_hash, str(page.index)
         )
         cached = cache.get(key)
         if cached is not None:
+            logger.info("translate: page %d/%d (cached)", i, total)
             page.markdown = cached
             continue
+        logger.info("translate: page %d/%d translating…", i, total)
         translated = translator.translate_page(page.markdown)
         cache.set(key, translated)
+        logger.info("translate: page %d/%d done via %s", i, total, translator.last_model)
         page.markdown = translated
     return out

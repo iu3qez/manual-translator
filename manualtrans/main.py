@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,27 @@ from .render import render as render_md
 from .translate import OpenRouterTranslator, translate_document
 
 app = typer.Typer(help="Translate ham-radio PDF manuals (EN/ZH) to Italian.")
+
+
+def _setup_logging(verbose: bool) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+    # httpx/httpcore log every request; only show them under --verbose
+    noisy_level = logging.DEBUG if verbose else logging.WARNING
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(noisy_level)
+
+
+@app.callback()
+def _main(
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="enable debug logging (place before the command)"
+    ),
+):
+    """Configure logging for all commands. INFO by default, DEBUG with -v."""
+    _setup_logging(verbose)
 
 
 @app.command()
@@ -112,15 +134,22 @@ def run(
     media = base.with_name("media")
 
     model = ocr_model or s.ocr_model
+    typer.echo(f"[1/4] OCR {input_pdf} (model {model})…", err=True)
     doc = run_ocr(input_pdf, doc_json, media, model, s.mistral_api_key, cache)
+    typer.echo(f"      {len(doc.pages)} page(s) → {doc_json}", err=True)
 
     gloss = Glossary.load(glossary)
     system_prompt = build_system_prompt(gloss.render())
     translator = OpenRouterTranslator(
         s.openrouter_api_key, s.openrouter_models, system_prompt, attempts=s.model_attempts
     )
+    models_label = ", ".join(s.openrouter_models) or "(none configured!)"
+    typer.echo(
+        f"[2/4] Translating {len(doc.pages)} page(s) [models: {models_label}]…", err=True
+    )
     doc_it = translate_document(doc, translator, cache)
     doc_it.dump(doc_it_json)
+    typer.echo(f"      → {doc_it_json}", err=True)
 
     problems = check_document(doc_it, doc)
     if problems:
@@ -131,10 +160,12 @@ def run(
         for p in problems:
             typer.echo(f"WARN: {p}", err=True)
 
+    typer.echo(f"[3/4] Assembling → {md_path}", err=True)
     md = assemble_doc(doc_it, header_footer_policy=gloss.header_footer_policy)
     md_path.write_text(md, encoding="utf-8")
 
     formats = [f.strip() for f in to.split(",")] if to else s.output_formats
+    typer.echo(f"[4/4] Rendering {', '.join(formats)} via pandoc…", err=True)
     produced = render_md(md_path, base, formats, media)
     for p in produced:
         typer.echo(f"wrote {p}")

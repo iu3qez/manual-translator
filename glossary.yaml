@@ -12,4 +12,6 @@ preferred:
   dual watch: dual watch
   battery save: risparmio batteria
   busy channel lockout: blocco canale occupato
-header_footer_policy: keep_once
+# Running headers/footers are page furniture (logos OCR'd to noise, running
+# titles); a reflowing translated doc drops them.
+header_footer_policy: drop

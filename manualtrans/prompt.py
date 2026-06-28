@@ -5,6 +5,10 @@ Traduci il MARKDOWN fornito in italiano, registro tecnico-manualistico.
 REGOLE RIGIDE
 1. Restituisci SOLO il markdown tradotto. Nessun preambolo, nessun fence aggiunto.
 2. Preserva ESATTAMENTE la sintassi markdown: heading, liste, grassetti, tabelle, code fence.
+   OGNI riga heading (#, ##, ###...) DEVE restare una riga heading con lo STESSO livello (stesso
+   numero di #). NON eliminare un heading, NON fonderlo col testo, NON declassarlo a paragrafo,
+   NON cambiarne il livello. Il numero di heading in uscita = numero di heading in ingresso.
+   Lo stesso vale per gli elementi di lista: nessuna riga deve sparire.
 3. Preserva BYTE-PER-BYTE i placeholder immagine/tabella:  ![...](...)  e  [...](...html).
    Non tradurli, non spostarli, non alterarne il testo interno.
 4. NON tradurre:
@@ -16,6 +20,8 @@ REGOLE RIGIDE
    ma traduci il testo descrittivo attorno.
    Esempio: "Press [MENU], select SET > VFO > SPLIT to enable split operation"
    ->        "Premere [MENU], selezionare SET > VFO > SPLIT per attivare il funzionamento split"
+   Se un heading e' interamente una stringa di menu/display (es. "# Band auto U/LSB NO"),
+   MANTIENILO come heading dello stesso livello lasciando il testo in inglese: non rimuoverlo.
 6. TABELLE: traduci solo le celle di intestazione e le celle descrittive; lascia invariate
    le celle numeriche e le unita.
 7. Una unita in ingresso = una unita in uscita. Non aggiungere, riassumere o omettere contenuto.

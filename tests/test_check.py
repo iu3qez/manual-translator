@@ -13,12 +13,17 @@ def one_page(markdown, images=None, tables=None):
 
 
 def test_placeholder_integrity_ok():
-    d = one_page("![i](media/i.jpeg)", images=[Image(id="i", path="media/i.jpeg")])
+    d = one_page(
+        "![i](i.jpeg)\n\n[tbl-0.html](tbl-0.html)",
+        images=[Image(id="i", path="media/i.jpeg")],
+        tables=[Table(id="tbl-0.html", html="<table></table>")],
+    )
     assert check_placeholder_integrity(d) == []
 
 
 def test_placeholder_integrity_orphan_table():
-    d = one_page("[tbl-1.html](#tbl-1)", tables=[])
+    # real Mistral syntax; one placeholder but no declared table
+    d = one_page("[tbl-1.html](tbl-1.html)", tables=[])
     problems = check_placeholder_integrity(d)
     assert problems  # non-empty
 

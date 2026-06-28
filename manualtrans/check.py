@@ -24,9 +24,9 @@ def check_placeholder_integrity(doc: Doc) -> list[str]:
                 f"page {page.index}: {len(matches)} table placeholders vs "
                 f"{len(page.tables)} tables"
             )
-        for _, tbl_id in matches:
+        for tbl_id, _ in matches:
             if tbl_id not in table_ids:
-                problems.append(f"page {page.index}: orphan table placeholder #{tbl_id}")
+                problems.append(f"page {page.index}: orphan table placeholder {tbl_id}")
     return problems
 
 

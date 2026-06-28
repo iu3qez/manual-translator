@@ -5,7 +5,10 @@ import re
 from .models import Doc
 
 IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-TABLE_RE = re.compile(r"\[([^\]]+\.html)\]\(#([^)]+)\)")
+# Mistral OCR emits table placeholders as a markdown link whose href is the
+# table filename, e.g. [tbl-0.html](tbl-0.html) — NOT a #anchor. The negative
+# lookbehind keeps image placeholders (![...](...)) from matching.
+TABLE_RE = re.compile(r"(?<!!)\[([^\]]+\.html)\]\(([^)]*\.html)\)")
 
 
 class AssembleError(Exception):
@@ -32,10 +35,10 @@ def assemble(doc: Doc, header_footer_policy: str = "keep_once") -> str:
             )
 
         def _resolve(m: re.Match) -> str:
-            tbl_id = m.group(2)
+            tbl_id = m.group(1)
             if tbl_id not in table_ids:
                 raise AssembleError(
-                    f"page {page.index}: orphan table placeholder #{tbl_id}"
+                    f"page {page.index}: orphan table placeholder {tbl_id}"
                 )
             return table_ids[tbl_id]
 

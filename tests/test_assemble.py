@@ -13,26 +13,39 @@ def doc_with(markdown, images=None, tables=None, header=None, footer=None):
 
 
 def test_table_placeholder_resolved_to_html():
+    # Mistral OCR's real placeholder syntax: [tbl-0.html](tbl-0.html)
     d = doc_with(
-        "Spec:\n\n[tbl-0.html](#tbl-0)\n",
-        tables=[Table(id="tbl-0", html="<table><tr><td>1</td></tr></table>")],
+        "Spec:\n\n[tbl-0.html](tbl-0.html)\n",
+        tables=[Table(id="tbl-0.html", html="<table><tr><td>1</td></tr></table>")],
     )
     out = assemble(d)
     assert "<table><tr><td>1</td></tr></table>" in out
-    assert "[tbl-0.html](#tbl-0)" not in out
+    assert "[tbl-0.html](tbl-0.html)" not in out
 
 
 def test_image_placeholder_kept():
+    # Mistral emits a bare-filename href; assemble must not rewrite it.
     d = doc_with(
-        "![img-0.jpeg](media/img-0.jpeg)",
+        "![img-0.jpeg](img-0.jpeg)",
         images=[Image(id="img-0.jpeg", path="media/img-0.jpeg")],
     )
     out = assemble(d)
-    assert "![img-0.jpeg](media/img-0.jpeg)" in out
+    assert "![img-0.jpeg](img-0.jpeg)" in out
 
 
-def test_orphan_table_placeholder_fails():
-    d = doc_with("[tbl-9.html](#tbl-9)", tables=[])
+def test_table_count_mismatch_fails():
+    # one placeholder but zero declared tables
+    d = doc_with("[tbl-9.html](tbl-9.html)", tables=[])
+    with pytest.raises(AssembleError):
+        assemble(d)
+
+
+def test_orphan_table_id_fails():
+    # count matches (1 placeholder, 1 table) but the referenced id is unknown
+    d = doc_with(
+        "[tbl-9.html](tbl-9.html)",
+        tables=[Table(id="tbl-0.html", html="<table></table>")],
+    )
     with pytest.raises(AssembleError):
         assemble(d)
 

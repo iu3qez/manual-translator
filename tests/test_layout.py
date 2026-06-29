@@ -89,3 +89,20 @@ def test_strip_ocr_toc_leaves_normal_page():
               pages=[Page(index=0, markdown="# Capitolo 1\n\nParagrafo normale.")])
     out = strip_ocr_toc(doc)
     assert out.pages[0].markdown == "# Capitolo 1\n\nParagrafo normale."
+
+
+from manualtrans.layout import wrap_callouts
+
+
+def test_wrap_callouts_wraps_note_and_warning():
+    md = "NOTA: questo è importante.\n\nParagrafo normale.\n\nWARNING attenzione qui."
+    out = wrap_callouts(md)
+    assert '<div class="callout">\nNOTA: questo è importante.\n</div>' in out
+    assert '<div class="callout">\nWARNING attenzione qui.\n</div>' in out
+    assert "Paragrafo normale." in out
+    assert out.count('<div class="callout">') == 2
+
+
+def test_wrap_callouts_ignores_placeholders_and_plain():
+    md = "![img-0.jpeg](img-0.jpeg)\n\nTesto semplice."
+    assert wrap_callouts(md) == md

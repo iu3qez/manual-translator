@@ -80,3 +80,21 @@ def strip_ocr_toc(doc: Doc) -> Doc:
         kept = [ln for i, ln in enumerate(lines) if i not in drop]
         page.markdown = "\n".join(kept).strip()
     return out
+
+
+_CALLOUT_RE = re.compile(r"^(note|nota|warning|attenzione|caution|avvertenza)\b[:\s]",
+                         re.IGNORECASE)
+
+
+def wrap_callouts(markdown: str) -> str:
+    paragraphs = markdown.split("\n\n")
+    out = []
+    for para in paragraphs:
+        first = para.lstrip().splitlines()[0] if para.strip() else ""
+        if first.startswith(("![", "[")):
+            out.append(para)
+        elif _CALLOUT_RE.match(first):
+            out.append(f'<div class="callout">\n{para.strip()}\n</div>')
+        else:
+            out.append(para)
+    return "\n\n".join(out)

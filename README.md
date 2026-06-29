@@ -31,3 +31,14 @@ uv run manualtrans check     doc_it.json --source doc.json
 
 Configuration is read from `.env` (see `.env.example`). `OPENROUTER_MODELS` is an
 ordered fallback list; translation tries each model in turn.
+
+## Layout reconstruction (OCR-4)
+
+By default the pipeline uses Mistral OCR-4 (`mistral-ocr-latest`), which returns
+per-block geometry. `manualtrans` uses it to rebuild heading levels, generate an
+adaptive stylesheet (compact body font, page size/margins matched to the
+original), drop the original table-of-contents (its page numbers are stale after
+reflow) and generate a fresh one, and style NOTE/WARNING callouts.
+
+Use `--ocr-model ocr3` for the cheaper flat OCR-3 path (no layout), or `--no-layout`
+to skip reconstruction while still using OCR-4.

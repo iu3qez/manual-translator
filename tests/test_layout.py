@@ -62,3 +62,30 @@ def test_reclassify_skips_on_count_mismatch():
     it = _doc([Page(index=0, markdown="# A-it")])  # 1 heading vs 2 title blocks
     out = reclassify_headings(en, it)
     assert out.pages[0].markdown == "# A-it"  # unchanged
+
+
+from manualtrans.layout import strip_ocr_toc
+
+
+def test_strip_ocr_toc_removes_index_block():
+    from manualtrans.models import Doc, Page
+    toc = ("# Indice\n\n"
+           "1. Panoramica....................3\n"
+           "2. Connettori...................7\n"
+           "3. Display......................11\n\n"
+           "Testo reale che resta.")
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown=toc)])
+    out = strip_ocr_toc(doc)
+    md = out.pages[0].markdown
+    assert "Indice" not in md
+    assert "....." not in md
+    assert "Testo reale che resta." in md
+
+
+def test_strip_ocr_toc_leaves_normal_page():
+    from manualtrans.models import Doc, Page
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown="# Capitolo 1\n\nParagrafo normale.")])
+    out = strip_ocr_toc(doc)
+    assert out.pages[0].markdown == "# Capitolo 1\n\nParagrafo normale."

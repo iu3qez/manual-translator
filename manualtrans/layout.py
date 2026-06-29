@@ -6,6 +6,9 @@ import statistics
 from .models import Block, Doc
 
 HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$", re.MULTILINE)
+_TOC_TITLE_RE = re.compile(r"^#{1,6}\s+(contents|table of contents|indice|sommario)\s*$",
+                           re.IGNORECASE)
+_LEADER_RE = re.compile(r"^.*\.{3,}\s*\d+\s*$")
 
 
 def block_font_size(block: Block) -> float:
@@ -60,4 +63,20 @@ def reclassify_headings(en_doc: Doc, it_doc: Doc, thresholds=(1.7, 1.35, 1.15)) 
             return f"{'#' * next(seq)} {m.group(2)}"
 
         it_page.markdown = HEADING_RE.sub(_sub, it_page.markdown)
+    return out
+
+
+def strip_ocr_toc(doc: Doc) -> Doc:
+    out = doc.model_copy(deep=True)
+    for page in out.pages:
+        lines = page.markdown.splitlines()
+        leader_idx = [i for i, ln in enumerate(lines) if _LEADER_RE.match(ln)]
+        if len(leader_idx) < 3:
+            continue
+        title_idx = next((i for i, ln in enumerate(lines) if _TOC_TITLE_RE.match(ln)), None)
+        if title_idx is None:
+            continue
+        drop = set(leader_idx) | {title_idx}
+        kept = [ln for i, ln in enumerate(lines) if i not in drop]
+        page.markdown = "\n".join(kept).strip()
     return out

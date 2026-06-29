@@ -7,7 +7,7 @@ from pathlib import Path
 from mistralai.client import Mistral
 
 from .cache import Cache, file_hash
-from .models import Doc, Image, Page, Table
+from .models import Block, Doc, Image, Page, Table
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,17 @@ def parse_ocr_response(
             # Real SDK uses tbl.content; fake test objects use tbl.html
             html = tbl.content if hasattr(tbl, "content") else tbl.html
             tables.append(Table(id=tbl.id, html=html))
+        blocks: list[Block] = []
+        for blk in getattr(p, "blocks", None) or []:
+            blocks.append(Block(
+                type=getattr(blk, "type", "text"),
+                bbox=[blk.top_left_x, blk.top_left_y, blk.bottom_right_x, blk.bottom_right_y],
+                content=getattr(blk, "content", None),
+            ))
+        dims = getattr(p, "dimensions", None)
+        width = getattr(dims, "width", None) if dims else None
+        height = getattr(dims, "height", None) if dims else None
+        dpi = getattr(dims, "dpi", None) if dims else None
         pages.append(
             Page(
                 index=i,
@@ -48,6 +59,10 @@ def parse_ocr_response(
                 tables=tables,
                 header=getattr(p, "header", None),
                 footer=getattr(p, "footer", None),
+                blocks=blocks,
+                width=width,
+                height=height,
+                dpi=dpi,
             )
         )
     return Doc(
@@ -94,6 +109,7 @@ def run_ocr(
         include_image_base64=True,
         extract_header=True,
         extract_footer=True,
+        include_blocks=(ocr_model == "mistral-ocr-latest"),
     )
     logger.info("ocr: received %d page(s), extracting media…", len(response.pages))
     doc = parse_ocr_response(

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # NoDecode stops pydantic-settings from JSON-decoding these from env/.env
     # sources, so _parse_lists can split the comma-separated string instead.
     openrouter_models: Annotated[list[str], NoDecode] = []
-    ocr_model: str = "mistral-ocr-2512"
+    ocr_model: str = "mistral-ocr-latest"
     output_formats: Annotated[list[str], NoDecode] = ["pdf", "docx"]
     # NB: the header/footer policy lives in glossary.yaml (assemble reads it from
     # there); it is intentionally NOT a setting to avoid two sources of truth.

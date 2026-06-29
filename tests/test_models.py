@@ -61,3 +61,14 @@ def test_page_block_defaults():
     page = Page(index=0, markdown="x")
     assert page.blocks == []
     assert page.width is None and page.height is None and page.dpi is None
+
+
+def test_block_color_field_default_and_roundtrip(tmp_path):
+    from manualtrans.models import Doc, Page, Block
+    assert Block(type="text", bbox=[0, 0, 1, 1]).color is None
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+              pages=[Page(index=0, markdown="x",
+                          blocks=[Block(type="text", bbox=[0, 0, 1, 1], color="#cc0000")])])
+    p = tmp_path / "d.json"
+    doc.dump(p)
+    assert Doc.load(p).pages[0].blocks[0].color == "#cc0000"

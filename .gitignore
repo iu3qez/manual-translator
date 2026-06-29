@@ -12,6 +12,7 @@ dist/
 *.doc_it.json
 *.docx
 *.pdf
+*.style.css
 
 # brainstorming/subagent scratch
 .superpowers/

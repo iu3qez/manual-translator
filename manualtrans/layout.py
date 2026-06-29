@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 import statistics
 from pathlib import Path
 
 from .models import Block, Doc
+
+logger = logging.getLogger(__name__)
 
 HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$", re.MULTILINE)
 _TOC_TITLE_RE = re.compile(r"^#{1,6}\s+(contents|table of contents|indice|sommario)\s*$",
@@ -53,10 +56,16 @@ def reclassify_headings(en_doc: Doc, it_doc: Doc, thresholds=(1.7, 1.35, 1.15)) 
     body = body_font_size(en_doc)
     if not body:
         return out
+    reconstructed = skipped = 0
     for en_page, it_page in zip(en_doc.pages, out.pages):
         levels = title_block_levels(en_page, body, thresholds)
+        if not levels:
+            continue
         headings = HEADING_RE.findall(it_page.markdown)
-        if not levels or len(levels) != len(headings):
+        if len(levels) != len(headings):
+            # title-block count != heading count → reading-order match is unsafe,
+            # leave the page's levels untouched (and make the skip observable)
+            skipped += 1
             continue
         seq = iter(levels)
 
@@ -64,6 +73,11 @@ def reclassify_headings(en_doc: Doc, it_doc: Doc, thresholds=(1.7, 1.35, 1.15)) 
             return f"{'#' * next(seq)} {m.group(2)}"
 
         it_page.markdown = HEADING_RE.sub(_sub, it_page.markdown)
+        reconstructed += 1
+    logger.info(
+        "layout: heading levels reconstructed on %d page(s), %d skipped (title/heading count mismatch)",
+        reconstructed, skipped,
+    )
     return out
 
 

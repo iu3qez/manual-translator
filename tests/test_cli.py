@@ -80,3 +80,11 @@ def test_assemble_command(tmp_path: Path):
     result = runner.invoke(app, ["assemble", str(it), "--out", str(out)])
     assert result.exit_code == 0
     assert out.read_text(encoding="utf-8").startswith("# Titolo")
+
+
+def test_resolve_ocr_model_aliases():
+    from manualtrans.main import _resolve_ocr_model
+    assert _resolve_ocr_model("ocr3", "mistral-ocr-latest") == "mistral-ocr-2512"
+    assert _resolve_ocr_model("ocr4", "mistral-ocr-2512") == "mistral-ocr-latest"
+    assert _resolve_ocr_model(None, "mistral-ocr-latest") == "mistral-ocr-latest"
+    assert _resolve_ocr_model("custom/model", "x") == "custom/model"

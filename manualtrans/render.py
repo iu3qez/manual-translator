@@ -17,7 +17,7 @@ def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path) -> list[str
     return [
         "pandoc",
         str(md_path),
-        "--from=markdown+raw_html",
+        "--from=markdown+raw_html-implicit_figures",
         f"--resource-path={media_dir}",
         "-o",
         str(out_path),
@@ -34,7 +34,7 @@ def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path) -> list[str]
     return [
         "pandoc",
         str(md_path),
-        "--from=markdown+raw_html",
+        "--from=markdown+raw_html-implicit_figures",
         f"--resource-path={media_dir}",
         "--standalone",
         "--embed-resources",

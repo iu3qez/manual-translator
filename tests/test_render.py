@@ -32,6 +32,14 @@ def test_docx_cmd_no_pdf_engine(tmp_path: Path):
     assert not any("pdf-engine" in a for a in cmd)
 
 
+def test_no_implicit_figure_captions(tmp_path: Path):
+    # the image alt (filename) must not render as a visible figcaption
+    docx = build_pandoc_cmd(tmp_path / "in.md", tmp_path / "out.docx", tmp_path / "media")
+    html = build_html_cmd(tmp_path / "in.md", tmp_path / "out.html", tmp_path / "media")
+    assert any("-implicit_figures" in a for a in docx)
+    assert any("-implicit_figures" in a for a in html)
+
+
 def test_render_invokes_runner_per_format(tmp_path: Path):
     md = tmp_path / "in.md"
     md.write_text("# hi", encoding="utf-8")

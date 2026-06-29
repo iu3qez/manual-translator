@@ -106,3 +106,36 @@ def test_wrap_callouts_wraps_note_and_warning():
 def test_wrap_callouts_ignores_placeholders_and_plain():
     md = "![img-0.jpeg](img-0.jpeg)\n\nTesto semplice."
     assert wrap_callouts(md) == md
+
+
+from manualtrans.layout import style_profile, render_css, write_css
+
+
+def test_style_profile_from_blocks():
+    # body text blocks ~20px tall at 200dpi -> 20/200*72 = 7.2pt -> clamped to 8.0
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+              pages=[Page(index=0, markdown="x", dpi=200, width=1654, height=2339, blocks=[
+                  Block(type="text", bbox=[0, 0, 10, 20], content="a"),
+                  Block(type="text", bbox=[0, 0, 10, 20], content="b"),
+              ])])
+    prof = style_profile(doc)
+    assert prof["body_pt"] == 8.0
+    assert prof["page_w_mm"] == 210 and prof["page_h_mm"] == 297  # snapped to A4
+    assert prof["headings"][1] > prof["headings"][2] > prof["body_pt"]
+
+
+def test_style_profile_no_blocks_fallback():
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown="x")])
+    prof = style_profile(doc)
+    assert prof["body_pt"] == 10.5
+    assert prof["page_w_mm"] == 210
+
+
+def test_render_and_write_css(tmp_path):
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown="x")])
+    css = render_css(style_profile(doc))
+    assert "@page" in css and "body" in css and ".callout" in css and "h1" in css
+    p = write_css(style_profile(doc), tmp_path / "style.css")
+    assert p.read_text(encoding="utf-8") == css

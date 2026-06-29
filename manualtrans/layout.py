@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from pathlib import Path
 
 from .models import Block, Doc
 
@@ -80,6 +81,60 @@ def strip_ocr_toc(doc: Doc) -> Doc:
         kept = [ln for i, ln in enumerate(lines) if i not in drop]
         page.markdown = "\n".join(kept).strip()
     return out
+
+
+_HEADING_MULT = {1: 1.9, 2: 1.5, 3: 1.25, 4: 1.1}
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def style_profile(doc: Doc) -> dict:
+    dpis = [p.dpi for p in doc.pages if p.dpi]
+    dpi = statistics.median(dpis) if dpis else 200.0
+    body_px = body_font_size(doc)
+    body_pt = round(_clamp(body_px / dpi * 72, 8.0, 13.0), 1) if body_px else 10.5
+    widths = [p.width for p in doc.pages if p.width]
+    heights = [p.height for p in doc.pages if p.height]
+    if widths and heights:
+        w_mm = statistics.median(widths) / dpi * 25.4
+        h_mm = statistics.median(heights) / dpi * 25.4
+        if abs(w_mm - 210) <= 8 and abs(h_mm - 297) <= 8:
+            w_mm, h_mm = 210.0, 297.0
+        else:
+            w_mm, h_mm = round(w_mm), round(h_mm)
+    else:
+        w_mm, h_mm = 210.0, 297.0
+    return {
+        "body_pt": body_pt,
+        "line_height": 1.25,
+        "page_w_mm": w_mm,
+        "page_h_mm": h_mm,
+        "margin_mm": 18.0,
+        "headings": {n: round(body_pt * m, 1) for n, m in _HEADING_MULT.items()},
+    }
+
+
+def render_css(profile: dict) -> str:
+    h = profile["headings"]
+    return f"""@page {{ size: {profile['page_w_mm']}mm {profile['page_h_mm']}mm; margin: {profile['margin_mm']}mm; }}
+body {{ font-family: "DejaVu Sans", Arial, sans-serif; font-size: {profile['body_pt']}pt; line-height: {profile['line_height']}; }}
+h1 {{ font-size: {h[1]}pt; }}
+h2 {{ font-size: {h[2]}pt; }}
+h3 {{ font-size: {h[3]}pt; }}
+h4 {{ font-size: {h[4]}pt; }}
+table {{ border-collapse: collapse; font-size: {profile['body_pt']}pt; }}
+th, td {{ border: 0.5pt solid #888; padding: 2pt 4pt; }}
+.callout {{ border-left: 3pt solid #36c; background: #eef3ff; padding: 4pt 8pt; margin: 6pt 0; }}
+img {{ max-width: 100%; }}
+"""
+
+
+def write_css(profile: dict, path) -> Path:
+    path = Path(path)
+    path.write_text(render_css(profile), encoding="utf-8")
+    return path
 
 
 _CALLOUT_RE = re.compile(r"^(note|nota|warning|attenzione|caution|avvertenza)\b[:\s]",

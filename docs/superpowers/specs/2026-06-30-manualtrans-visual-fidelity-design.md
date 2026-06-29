@@ -55,12 +55,22 @@ PDF ─[ocr4]→ doc.json(blocks) ─[pagerender: raster pagine sorgente]→ pag
 - `make_cover(page1_png, text, out_path) -> Path`: con Pillow, disegna una filigrana diagonale
   semi-trasparente `text` (default "TRADUZIONE IN ITALIANO") centrata sull'immagine; salva `out_path`.
 
-### 3.2 Campionamento colore (`color.py` o in `layout.py`)
-- `dominant_text_color(img, bbox) -> str | None`: ritaglia `bbox`; considera i pixel "di inchiostro"
-  (più scuri dello sfondo); se il loro colore dominante è **saturo e non grigio/nero** oltre soglia
-  (es. saturazione HSV ≥ 0.35 e non near-black/near-white) → ritorna `#rrggbb`, altrimenti `None`.
-- `annotate_block_colors(doc, page_images) -> doc`: per i blocchi `title|text`, setta `Block.color`
-  dal campionamento; gli altri restano `None`.
+### 3.2 Rilevamento colore via maschera HSV (`color.py`)
+Approccio **deterministico a maschere HSV** (Pillow `.convert("HSV")` + numpy vettoriale; niente
+OpenCV). Si definisce una tabella di **colori d'attenzione** target con i rispettivi range HSV, es.:
+```
+ATTENTION_COLORS = {
+  "#cc0000": [((0, 90, 60), (10, 255, 255)), ((170, 90, 60), (180, 255, 255))],  # rosso (2 range hue)
+  # estendibile: blu, verde, arancio…
+}
+```
+- `block_color(hsv_array, bbox) -> str | None`: ritaglia il bbox dall'array HSV della pagina;
+  considera i pixel **di inchiostro** (V sotto una soglia, cioè non sfondo chiaro); per ogni colore
+  target costruisce la maschera `inRange` (vettoriale numpy) e calcola la **frazione di pixel-inchiostro
+  nella maschera**; se la frazione massima supera la soglia (es. ≥ 0.5) ritorna quell'hex, altrimenti
+  `None`. (Il rosso usa due range di hue, uniti in OR.)
+- `annotate_block_colors(doc, page_images) -> doc`: converte ogni raster in HSV una volta, poi per i
+  blocchi `title|text` setta `Block.color`; gli altri restano `None`.
 
 ### 3.3 Schema (`models.py`)
 - `Block` guadagna `color: str | None = None` (retro-compatibile; OCR-3/senza-raster → None).
@@ -96,8 +106,9 @@ PDF ─[ocr4]→ doc.json(blocks) ─[pagerender: raster pagine sorgente]→ pag
 
 ## 5. Testing (`pytest`, nessuna API)
 
-- `dominant_text_color`: PNG sintetico con regione rossa pura → `#ff0000` (entro tolleranza); grigia
-  → `None`; near-white → `None`.
+- `block_color` (HSV mask): PNG sintetico con bbox su testo rosso puro → l'hex rosso target; testo
+  grigio/nero → `None`; sfondo chiaro → `None`. Verifica anche i due range di hue del rosso.
+- **Dipendenza:** aggiungere `numpy` a `pyproject.toml` (Pillow è già presente via weasyprint).
 - `annotate_block_colors`: doc con bbox su zone colorate/neutre di un raster fixture → `Block.color`
   popolato solo dove atteso.
 - `make_cover`: l'immagine prodotta differisce dall'input (watermark presente) e ha le stesse

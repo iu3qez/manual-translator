@@ -24,3 +24,41 @@ def test_body_font_size_no_blocks():
     doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
               pages=[Page(index=0, markdown="x")])
     assert body_font_size(doc) == 0.0
+
+
+from manualtrans.layout import title_block_levels, reclassify_headings
+
+
+def _doc(pages):
+    return Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest", pages=pages)
+
+
+def test_title_block_levels_by_ratio():
+    page = Page(index=0, markdown="x", blocks=[
+        Block(type="title", bbox=[0, 10, 10, 50], content="A"),   # 40 -> 2.0x body -> h1
+        Block(type="title", bbox=[0, 60, 10, 88], content="B"),   # 28 -> 1.4x -> h2
+        Block(type="text",  bbox=[0, 90, 10, 110], content="t"),  # 20 = body
+    ])
+    assert title_block_levels(page, body=20.0) == [1, 2]
+
+
+def test_reclassify_applies_en_levels_to_it():
+    en = _doc([Page(index=0, markdown="# A\n\n# B\n\nbody", blocks=[
+        Block(type="title", bbox=[0, 10, 10, 50], content="A"),    # h1
+        Block(type="title", bbox=[0, 60, 10, 84], content="B"),    # 24 -> 1.2x -> h3
+        Block(type="text",  bbox=[0, 90, 10, 110], content="body"),
+    ])])
+    it = _doc([Page(index=0, markdown="# A-it\n\n# B-it\n\ncorpo")])
+    out = reclassify_headings(en, it)
+    assert out.pages[0].markdown == "# A-it\n\n### B-it\n\ncorpo"
+
+
+def test_reclassify_skips_on_count_mismatch():
+    en = _doc([Page(index=0, markdown="# A", blocks=[
+        Block(type="title", bbox=[0, 0, 10, 40], content="A"),
+        Block(type="title", bbox=[0, 50, 10, 90], content="extra"),
+        Block(type="text", bbox=[0, 0, 10, 20], content="b"),
+    ])])
+    it = _doc([Page(index=0, markdown="# A-it")])  # 1 heading vs 2 title blocks
+    out = reclassify_headings(en, it)
+    assert out.pages[0].markdown == "# A-it"  # unchanged

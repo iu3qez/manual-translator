@@ -144,6 +144,39 @@ def test_structure_mismatch_uses_second_model(tmp_path, monkeypatch):
     assert calls["weak"] == 1 and calls["strong"] == 1
 
 
+def test_dropped_image_placeholder_is_restored(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    # EN page references two images; the (only) model drops one placeholder.
+    # Restoration is deterministic — it must not depend on a second model.
+    en = "intro\n\n![img-0.jpeg](img-0.jpeg)\n\n![img-1.jpeg](img-1.jpeg)"
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512",
+              pages=[Page(index=0, markdown=en)])
+
+    def handler(request):
+        return httpx.Response(200, json=_response("intro\n\n![img-0.jpeg](img-0.jpeg)"))  # drops img-1
+
+    t = OpenRouterTranslator("k", ["m1"], "sys", attempts=1, client=make_client(handler))
+    out = translate_document(doc, t, cache)
+    assert "![img-1.jpeg](img-1.jpeg)" in out.pages[0].markdown  # re-appended
+    assert out.pages[0].markdown.count("![") == 2
+
+
+def test_dropped_table_placeholder_is_restored(tmp_path, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    cache = Cache(tmp_path / "c")
+    en = "spec\n\n[tbl-0.html](tbl-0.html)"
+    doc = Doc(source_pdf="a.pdf", source_hash="H", ocr_model="mistral-ocr-2512",
+              pages=[Page(index=0, markdown=en)])
+
+    def handler(request):
+        return httpx.Response(200, json=_response("spec tradotto"))  # drops the table placeholder
+
+    t = OpenRouterTranslator("k", ["m1"], "sys", attempts=1, client=make_client(handler))
+    out = translate_document(doc, t, cache)
+    assert "[tbl-0.html](tbl-0.html)" in out.pages[0].markdown
+
+
 def test_structure_ok_does_not_call_second_model(tmp_path, monkeypatch):
     monkeypatch.setattr("time.sleep", lambda *_: None)
     cache = Cache(tmp_path / "c")

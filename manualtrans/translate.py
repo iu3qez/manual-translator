@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
+from .assemble import IMAGE_RE, TABLE_RE
 from .cache import Cache
 from .check import HEADING_RE, TR_RE
 from .models import Doc
@@ -17,10 +18,34 @@ logger = logging.getLogger(__name__)
 def _structure_sig(markdown: str) -> tuple[int, int]:
     """Structural fingerprint of a page: (heading count, table-row count).
 
-    A translated page whose fingerprint differs from its source page lost or
-    gained a heading/row — the model garbled the structure.
+    Differs from the source when the model dropped a heading or table row —
+    fidelity issues a different model may fix, so they drive second-model retry.
+    Placeholders are handled separately (deterministic restoration) because both
+    models can drop the same one.
     """
     return (len(HEADING_RE.findall(markdown)), len(TR_RE.findall(markdown)))
+
+
+def _placeholders(markdown: str) -> list[str]:
+    """Every image/table placeholder string in a page, in order of appearance."""
+    spans = [(m.start(), m.group(0)) for m in IMAGE_RE.finditer(markdown)]
+    spans += [(m.start(), m.group(0)) for m in TABLE_RE.finditer(markdown)]
+    return [text for _, text in sorted(spans)]
+
+
+def _restore_placeholders(en_md: str, it_md: str) -> tuple[str, list[str]]:
+    """Re-append any image/table placeholder present in the source but dropped by
+    the translation. Returns (restored_markdown, restored_placeholders).
+
+    Placeholders are a byte-for-byte invariant; the LLM drops them unreliably and
+    both models can drop the same one, so restoration is deterministic, not a
+    retry. Missing placeholders are appended at the end (correct for the common
+    trailing-figure case); position may differ for mid-page figures.
+    """
+    missing = [p for p in _placeholders(en_md) if p not in it_md]
+    if not missing:
+        return it_md, []
+    return it_md.rstrip() + "\n\n" + "\n\n".join(missing), missing
 
 
 class TranslationError(Exception):
@@ -136,9 +161,6 @@ def translate_document(
         else:
             pending.append((i, page, key, en_md, None))
 
-    if not pending:
-        return out
-
     def _work(item: tuple[int, object, str, str, str | None]) -> None:
         i, page, key, en_md, cached_bad = item
         target = _structure_sig(en_md)
@@ -166,8 +188,21 @@ def translate_document(
         page.markdown = text
         logger.info("translate: page %d/%d via %s", i, total, model)
 
-    # Each thread writes its own page object and a distinct cache file → no races.
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-        # list() forces consumption so any worker exception propagates here.
-        list(ex.map(_work, pending))
+    if pending:
+        # Each thread writes its own page object and a distinct cache file → no races.
+        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
+            # list() forces consumption so any worker exception propagates here.
+            list(ex.map(_work, pending))
+
+    # Guarantee the byte-for-byte placeholder invariant on every page (cached or
+    # freshly translated): re-append any image/table placeholder the model dropped.
+    # Deterministic — independent of which model produced the page.
+    for i, (src, page) in enumerate(zip(doc.pages, out.pages), start=1):
+        fixed, restored = _restore_placeholders(src.markdown, page.markdown)
+        if restored:
+            logger.warning(
+                "translate: page %d/%d restored %d dropped placeholder(s): %s",
+                i, total, len(restored), ", ".join(restored),
+            )
+            page.markdown = fixed
     return out

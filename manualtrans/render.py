@@ -12,9 +12,9 @@ class RenderError(Exception):
     pass
 
 
-def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path) -> list[str]:
+def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path, toc: bool = False) -> list[str]:
     """Pandoc command for a native output (DOCX): pandoc embeds images itself."""
-    return [
+    cmd = [
         "pandoc",
         str(md_path),
         "--from=markdown+raw_html-implicit_figures",
@@ -22,16 +22,20 @@ def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path) -> list[str
         "-o",
         str(out_path),
     ]
+    if toc:
+        cmd += ["--toc", "--toc-depth=3"]
+    return cmd
 
 
-def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path) -> list[str]:
+def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path,
+                   css: Path | None = None, toc: bool = False) -> list[str]:
     """Standalone HTML with images inlined as data URIs.
 
     weasyprint resolves a relative ``<img src>`` against its own working dir, not
     media/, so a plain HTML loses every image. Inlining via --embed-resources
     (pandoc's own PDF path does NOT do this) makes the HTML self-contained.
     """
-    return [
+    cmd = [
         "pandoc",
         str(md_path),
         "--from=markdown+raw_html-implicit_figures",
@@ -43,6 +47,11 @@ def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path) -> list[str]
         "-o",
         str(html_path),
     ]
+    if css is not None:
+        cmd.append(f"--css={css}")
+    if toc:
+        cmd += ["--toc", "--toc-depth=3"]
+    return cmd
 
 
 def build_weasyprint_cmd(html_path: Path, pdf_path: Path) -> list[str]:
@@ -61,6 +70,8 @@ def render(
     formats: list[str],
     media_dir: str | Path,
     runner=subprocess.run,
+    css: "Path | None" = None,
+    toc: bool = False,
 ) -> list[Path]:
     md_path = Path(md_path)
     out_base = Path(out_base)
@@ -78,11 +89,12 @@ def render(
             os.close(fd)
             tmp_html = Path(tmp_name)
             try:
-                _run(runner, build_html_cmd(md_path, tmp_html, media_dir), "pandoc (html)")
+                _run(runner, build_html_cmd(md_path, tmp_html, media_dir, css=css, toc=toc),
+                     "pandoc (html)")
                 _run(runner, build_weasyprint_cmd(tmp_html, out_path), "weasyprint")
             finally:
                 tmp_html.unlink(missing_ok=True)
         else:
-            _run(runner, build_pandoc_cmd(md_path, out_path, media_dir), "pandoc")
+            _run(runner, build_pandoc_cmd(md_path, out_path, media_dir, toc=toc), "pandoc")
         produced.append(out_path)
     return produced

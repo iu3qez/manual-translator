@@ -92,3 +92,37 @@ def test_render_raises_on_failure(tmp_path: Path):
 
     with pytest.raises(RenderError):
         render(md, tmp_path / "out", ["pdf"], tmp_path / "media", runner=runner)
+
+
+def test_html_cmd_css_and_toc(tmp_path):
+    from manualtrans.render import build_html_cmd
+    cmd = build_html_cmd(tmp_path / "in.md", tmp_path / "o.html", tmp_path / "media",
+                         css=tmp_path / "s.css", toc=True)
+    assert any(a == f"--css={tmp_path / 's.css'}" for a in cmd)
+    assert "--toc" in cmd and "--toc-depth=3" in cmd
+
+
+def test_pandoc_cmd_toc(tmp_path):
+    from manualtrans.render import build_pandoc_cmd
+    cmd = build_pandoc_cmd(tmp_path / "in.md", tmp_path / "o.docx", tmp_path / "media", toc=True)
+    assert "--toc" in cmd
+
+
+def test_render_threads_css_and_toc(tmp_path):
+    from manualtrans.render import render
+    md = tmp_path / "in.md"; md.write_text("# hi", encoding="utf-8")
+    calls = []
+
+    class R:
+        returncode = 0
+        stderr = ""
+
+    def runner(cmd, **k):
+        calls.append(cmd)
+        return R()
+
+    render(md, tmp_path / "out", ["pdf", "docx"], tmp_path / "media",
+           runner=runner, css=tmp_path / "s.css", toc=True)
+    flat = [a for c in calls for a in c]
+    assert any(a == f"--css={tmp_path / 's.css'}" for a in flat)  # pdf html step
+    assert flat.count("--toc") == 2  # pdf html + docx

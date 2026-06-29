@@ -108,11 +108,19 @@ del bbox.
 - margini: stimati dall'estensione dell'area-testo (min/max bbox dei blocchi) rispetto al bordo
   pagina; arrotondati a valori tipografici sensati.
 
-### 6.3 Riclassificazione heading — `reclassify_headings(doc) -> doc`
-Per ogni riga heading del markdown (`^#{1,6}\s+(.*)`), trova il blocco `title` il cui `content`
-corrisponde al testo (match esatto/normalizzato); calcola `ratio = font/body` e assegna il livello
-per soglie (§2). Riscrive il prefisso `#` al livello derivato. Heading senza blocco corrispondente:
-lasciati invariati. Ritorna un nuovo `Doc` (i `markdown` di pagina aggiornati). Deterministico.
+### 6.3 Riclassificazione heading — `reclassify_headings(en_doc, it_doc) -> Doc`
+**(Implementato — approccio posizionale sull'IT, divergente dalla bozza "match per testo sull'EN".)**
+I livelli si derivano dai blocchi `title` dell'**EN** (sorted by `bbox[1]`): `ratio = font/body` →
+livello per soglie (§2). Si applicano al **doc tradotto (IT)** per **ordine di lettura**: l'i-esimo
+heading markdown dell'IT prende il livello dell'i-esimo title-block EN. Guardia per-pagina: se
+`len(livelli) != len(heading)` (o nessun title-block, o body=0) la pagina è **lasciata invariata** e
+il fatto è loggato (conteggio ricostruite/saltate). Si opera sull'IT *dopo* la traduzione (non
+sull'EN prima) così la cache di traduzione, indicizzata per pagina, non viene toccata. Solo il
+prefisso `#` viene riscritto; il testo dell'heading è preservato. Deterministico.
+**Limite noto (accettato):** il match posizionale assume che l'i-esimo title-block corrisponda
+all'i-esimo heading; su pagine multi-colonna o quando un title-block non diventa un heading markdown
+(e viceversa) i conteggi divergono e la pagina resta flat. Da validare sull'output reale (vedi
+acceptance §10.1).
 
 ### 6.4 Callout — `wrap_callouts(markdown) -> markdown`
 Righe/paragrafi che iniziano con `NOTE|NOTA|WARNING|ATTENZIONE|CAUTION|AVVERTENZA` (case-insensitive,

@@ -35,3 +35,29 @@ def test_page_defaults():
     assert page.images == []
     assert page.tables == []
     assert page.header is None
+
+
+def test_block_and_page_geometry_roundtrip(tmp_path):
+    from manualtrans.models import Doc, Page, Block
+    doc = Doc(
+        source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+        pages=[Page(
+            index=0, markdown="# T",
+            blocks=[Block(type="title", bbox=[10.0, 20.0, 300.0, 60.0], content="T")],
+            width=1654.0, height=2339.0, dpi=200.0,
+        )],
+    )
+    p = tmp_path / "doc.json"
+    doc.dump(p)
+    loaded = Doc.load(p)
+    assert loaded == doc
+    assert loaded.pages[0].blocks[0].type == "title"
+    assert loaded.pages[0].blocks[0].bbox == [10.0, 20.0, 300.0, 60.0]
+    assert loaded.pages[0].dpi == 200.0
+
+
+def test_page_block_defaults():
+    from manualtrans.models import Page
+    page = Page(index=0, markdown="x")
+    assert page.blocks == []
+    assert page.width is None and page.height is None and page.dpi is None

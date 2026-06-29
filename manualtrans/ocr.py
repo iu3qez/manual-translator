@@ -7,7 +7,7 @@ from pathlib import Path
 from mistralai.client import Mistral
 
 from .cache import Cache, file_hash
-from .models import Doc, Image, Page, Table
+from .models import Block, Doc, Image, Page, Table
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,17 @@ def parse_ocr_response(
             # Real SDK uses tbl.content; fake test objects use tbl.html
             html = tbl.content if hasattr(tbl, "content") else tbl.html
             tables.append(Table(id=tbl.id, html=html))
+        blocks: list[Block] = []
+        for blk in getattr(p, "blocks", None) or []:
+            blocks.append(Block(
+                type=getattr(blk, "type", "text"),
+                bbox=[blk.top_left_x, blk.top_left_y, blk.bottom_right_x, blk.bottom_right_y],
+                content=getattr(blk, "content", None),
+            ))
+        dims = getattr(p, "dimensions", None)
+        width = getattr(dims, "width", None) if dims else None
+        height = getattr(dims, "height", None) if dims else None
+        dpi = getattr(dims, "dpi", None) if dims else None
         pages.append(
             Page(
                 index=i,
@@ -48,6 +59,10 @@ def parse_ocr_response(
                 tables=tables,
                 header=getattr(p, "header", None),
                 footer=getattr(p, "footer", None),
+                blocks=blocks,
+                width=width,
+                height=height,
+                dpi=dpi,
             )
         )
     return Doc(
@@ -79,7 +94,9 @@ def run_ocr(
         out_json.write_text(cached, encoding="utf-8")
         return doc
 
-    client = client or Mistral(api_key=api_key)
+    # OCR-4 (include_blocks) is a long server-side job; the SDK's default read
+    # timeout is too short and drops the connection (ReadTimeout). Give it 10 min.
+    client = client or Mistral(api_key=api_key, timeout_ms=600_000)
     logger.info("ocr: uploading %s to Mistral…", pdf_path.name)
     uploaded = client.files.upload(
         file={"file_name": pdf_path.name, "content": pdf_path.read_bytes()},
@@ -94,6 +111,7 @@ def run_ocr(
         include_image_base64=True,
         extract_header=True,
         extract_footer=True,
+        include_blocks=(ocr_model == "mistral-ocr-latest"),
     )
     logger.info("ocr: received %d page(s), extracting media…", len(response.pages))
     doc = parse_ocr_response(

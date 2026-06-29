@@ -15,6 +15,12 @@ class Table(BaseModel):
     html: str
 
 
+class Block(BaseModel):
+    type: str
+    bbox: list[float]
+    content: str | None = None
+
+
 class Page(BaseModel):
     index: int
     markdown: str
@@ -22,6 +28,10 @@ class Page(BaseModel):
     tables: list[Table] = []
     header: str | None = None
     footer: str | None = None
+    blocks: list[Block] = []
+    width: float | None = None
+    height: float | None = None
+    dpi: float | None = None
 
 
 class Doc(BaseModel):

@@ -6,6 +6,7 @@ from typing import Optional
 
 import typer
 
+from . import layout
 from .assemble import assemble as assemble_doc
 from .cache import Cache
 from .check import check_document
@@ -18,6 +19,14 @@ from .render import render as render_md
 from .translate import OpenRouterTranslator, translate_document
 
 app = typer.Typer(help="Translate ham-radio PDF manuals (EN/ZH) to Italian.")
+
+_OCR_ALIASES = {"ocr3": "mistral-ocr-2512", "ocr4": "mistral-ocr-latest"}
+
+
+def _resolve_ocr_model(flag: str | None, default: str) -> str:
+    if flag is None:
+        return default
+    return _OCR_ALIASES.get(flag, flag)
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -49,7 +58,7 @@ def ocr(
     ocr_model: Optional[str] = typer.Option(None, "--ocr-model"),
 ):
     s = get_settings()
-    model = ocr_model or s.ocr_model
+    model = _resolve_ocr_model(ocr_model, s.ocr_model)
     cache = Cache(s.cache_dir)
     run_ocr(input_pdf, out, media, model, s.mistral_api_key, cache)
     typer.echo(f"wrote {out}")
@@ -124,6 +133,7 @@ def run(
     to: Optional[str] = typer.Option(None, "--to"),
     glossary: Path = typer.Option(Path("glossary.yaml"), "--glossary"),
     force: bool = typer.Option(False, "--force", help="proceed to render even if structure-parity checks fail"),
+    no_layout: bool = typer.Option(False, "--no-layout", help="skip layout reconstruction"),
 ):
     s = get_settings()
     cache = Cache(s.cache_dir)
@@ -133,7 +143,7 @@ def run(
     md_path = base.parent / (base.name + ".md")
     media = base.with_name("media")
 
-    model = ocr_model or s.ocr_model
+    model = _resolve_ocr_model(ocr_model, s.ocr_model)
     typer.echo(f"[1/4] OCR {input_pdf} (model {model})…", err=True)
     doc = run_ocr(input_pdf, doc_json, media, model, s.mistral_api_key, cache)
     typer.echo(f"      {len(doc.pages)} page(s) → {doc_json}", err=True)
@@ -162,12 +172,24 @@ def run(
         for p in problems:
             typer.echo(f"WARN: {p}", err=True)
 
+    css_path = None
+    toc = False
+    use_layout = (not no_layout) and any(p.blocks for p in doc.pages)
+    if use_layout:
+        doc_it = layout.reclassify_headings(doc, doc_it)
+        doc_it = layout.strip_ocr_toc(doc_it)
+        css_path = layout.write_css(layout.style_profile(doc), base.with_name(base.name + ".style.css"))
+        toc = True
+        typer.echo("      layout: reconstructed heading levels + adaptive CSS", err=True)
+
     typer.echo(f"[3/4] Assembling → {md_path}", err=True)
     md = assemble_doc(doc_it, header_footer_policy=gloss.header_footer_policy)
+    if use_layout:
+        md = layout.wrap_callouts(md)
     md_path.write_text(md, encoding="utf-8")
 
     formats = [f.strip() for f in to.split(",")] if to else s.output_formats
     typer.echo(f"[4/4] Rendering {', '.join(formats)} via pandoc…", err=True)
-    produced = render_md(md_path, base, formats, media)
+    produced = render_md(md_path, base, formats, media, css=css_path, toc=toc)
     for p in produced:
         typer.echo(f"wrote {p}")

@@ -59,3 +59,39 @@ def test_run_ocr_uses_cache(tmp_path: Path):
     assert calls["n"] == 1  # second call served from cache
     assert doc1 == doc2
     assert out.exists()
+
+
+def test_parse_blocks_and_dimensions(tmp_path):
+    from types import SimpleNamespace
+    import base64
+    from manualtrans.ocr import parse_ocr_response
+
+    raw = base64.b64encode(b"jpegbytes").decode()
+    resp = SimpleNamespace(pages=[SimpleNamespace(
+        markdown="# Big title\n\nbody",
+        images=[SimpleNamespace(id="img-0.jpeg", image_base64=raw)],
+        tables=[],
+        dimensions=SimpleNamespace(dpi=200, width=1654, height=2339),
+        blocks=[
+            SimpleNamespace(type="title", top_left_x=10, top_left_y=20,
+                            bottom_right_x=300, bottom_right_y=70, content="Big title"),
+            SimpleNamespace(type="text", top_left_x=10, top_left_y=90,
+                            bottom_right_x=300, bottom_right_y=110, content="body"),
+        ],
+    )])
+    doc = parse_ocr_response(resp, "m.pdf", "H", "mistral-ocr-latest", tmp_path / "media")
+    pg = doc.pages[0]
+    assert pg.dpi == 200 and pg.width == 1654 and pg.height == 2339
+    assert [b.type for b in pg.blocks] == ["title", "text"]
+    assert pg.blocks[0].bbox == [10, 20, 300, 70]
+    assert pg.blocks[0].content == "Big title"
+
+
+def test_parse_no_blocks_ok(tmp_path):
+    # OCR-3 style response: no blocks/dimensions attrs -> empty/None, no crash
+    from types import SimpleNamespace
+    from manualtrans.ocr import parse_ocr_response
+    resp = SimpleNamespace(pages=[SimpleNamespace(markdown="x", images=[], tables=[])])
+    doc = parse_ocr_response(resp, "m.pdf", "H", "mistral-ocr-2512", tmp_path / "media")
+    assert doc.pages[0].blocks == []
+    assert doc.pages[0].dpi is None

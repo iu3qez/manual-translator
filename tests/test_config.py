@@ -22,7 +22,7 @@ def test_defaults(monkeypatch):
               "CACHE_DIR"]:
         monkeypatch.delenv(k, raising=False)
     s = Settings(_env_file=None)
-    assert s.ocr_model == "mistral-ocr-2512"
+    assert s.ocr_model == "mistral-ocr-latest"
     assert s.output_formats == ["pdf", "docx"]
 
 

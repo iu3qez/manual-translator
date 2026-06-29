@@ -94,7 +94,9 @@ def run_ocr(
         out_json.write_text(cached, encoding="utf-8")
         return doc
 
-    client = client or Mistral(api_key=api_key)
+    # OCR-4 (include_blocks) is a long server-side job; the SDK's default read
+    # timeout is too short and drops the connection (ReadTimeout). Give it 10 min.
+    client = client or Mistral(api_key=api_key, timeout_ms=600_000)
     logger.info("ocr: uploading %s to Mistral…", pdf_path.name)
     uploaded = client.files.upload(
         file={"file_name": pdf_path.name, "content": pdf_path.read_bytes()},

@@ -86,7 +86,13 @@ class OpenRouterTranslator:
             },
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        content = resp.json()["choices"][0]["message"]["content"]
+        if not content:
+            # some models occasionally return null/empty content; treat it as a
+            # failure so the fallback tries the next model instead of poisoning
+            # the page with None (which later crashes regex/structure checks).
+            raise TranslationError(f"model {model} returned empty content")
+        return content
 
     def translate_page(self, markdown: str) -> str:
         text, model = self._translate_page_with_model(markdown)

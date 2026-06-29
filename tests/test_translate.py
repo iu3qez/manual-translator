@@ -51,6 +51,20 @@ def test_fallback_to_second_model(monkeypatch):
     assert t.last_model == "m2"
 
 
+def test_empty_content_falls_back_to_next_model(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content.decode())["model"]
+        if model == "m1":
+            return httpx.Response(200, json={"choices": [{"message": {"content": None}}]})
+        return httpx.Response(200, json=_response("DAL SECONDO"))
+
+    t = OpenRouterTranslator("k", ["m1", "m2"], "sys", attempts=1, client=make_client(handler))
+    assert t.translate_page("hi") == "DAL SECONDO"  # null content from m1 → fall back
+    assert t.last_model == "m2"
+
+
 def test_rate_limit_falls_back_immediately(monkeypatch):
     monkeypatch.setattr("time.sleep", lambda *_: None)
     calls = {"m1": 0, "m2": 0}

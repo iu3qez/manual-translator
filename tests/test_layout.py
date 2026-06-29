@@ -9,7 +9,9 @@ def test_block_font_size_single_and_multiline():
     assert block_font_size(two) == 20.0
 
 
-def test_body_font_size_median_of_text_blocks():
+def test_body_font_size_low_percentile_of_text_heights():
+    # body line height = low percentile of TEXT-block heights (single lines),
+    # ignoring title blocks; with [20,22,24] the 15th-pct lands on the smallest.
     doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
               pages=[Page(index=0, markdown="x", blocks=[
                   Block(type="title", bbox=[0, 0, 10, 40], content="T"),
@@ -17,7 +19,7 @@ def test_body_font_size_median_of_text_blocks():
                   Block(type="text", bbox=[0, 0, 10, 22], content="b"),
                   Block(type="text", bbox=[0, 0, 10, 24], content="c"),
               ])])
-    assert body_font_size(doc) == 22.0  # median of 20,22,24, ignores the title
+    assert body_font_size(doc) == 20.0
 
 
 def test_body_font_size_no_blocks():

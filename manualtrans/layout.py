@@ -21,16 +21,30 @@ def block_font_size(block: Block) -> float:
     return (y1 - y0) / max(1, n_lines)
 
 
+_BODY_LINE_PCT = 0.15
+
+
+def _percentile(sorted_vals: list[float], q: float) -> float:
+    if not sorted_vals:
+        return 0.0
+    idx = max(0, min(len(sorted_vals) - 1, round(q * (len(sorted_vals) - 1))))
+    return float(sorted_vals[idx])
+
+
 def body_font_size(doc: Doc) -> float:
-    text_sizes, all_sizes = [], []
-    for page in doc.pages:
-        for b in page.blocks:
-            size = block_font_size(b)
-            all_sizes.append(size)
-            if b.type == "text":
-                text_sizes.append(size)
-    pool = text_sizes or all_sizes
-    return float(statistics.median(pool)) if pool else 0.0
+    """Height (px) of ONE body text line.
+
+    Mistral OCR packs each text block's content onto a single line (no newlines),
+    so block_height/n_lines wildly overestimates multi-line paragraphs. Instead
+    take a low percentile of text-block heights: genuine single-line blocks sit at
+    the bottom of the height distribution and approximate one line. Used both as
+    the body line height and as the denominator for heading-level ratios.
+    """
+    heights = [b.bbox[3] - b.bbox[1] for p in doc.pages for b in p.blocks if b.type == "text"]
+    if not heights:
+        heights = [b.bbox[3] - b.bbox[1] for p in doc.pages for b in p.blocks]
+    heights.sort()
+    return _percentile(heights, _BODY_LINE_PCT)
 
 
 def _level_for_ratio(ratio: float, thresholds: tuple[float, float, float]) -> int:
@@ -98,6 +112,8 @@ def strip_ocr_toc(doc: Doc) -> Doc:
 
 
 _HEADING_MULT = {1: 1.9, 2: 1.5, 3: 1.25, 4: 1.1}
+# a text-line bbox is taller than the glyphs (leading/line-box); map line-box → font
+_GLYPH_FACTOR = 0.72
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -107,8 +123,8 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 def style_profile(doc: Doc) -> dict:
     dpis = [p.dpi for p in doc.pages if p.dpi]
     dpi = statistics.median(dpis) if dpis else 200.0
-    body_px = body_font_size(doc)
-    body_pt = round(_clamp(body_px / dpi * 72, 8.0, 13.0), 1) if body_px else 10.5
+    body_px = body_font_size(doc)  # one body line height (px)
+    body_pt = round(_clamp(body_px / dpi * 72 * _GLYPH_FACTOR, 8.0, 12.0), 1) if body_px else 10.5
     widths = [p.width for p in doc.pages if p.width]
     heights = [p.height for p in doc.pages if p.height]
     if widths and heights:

@@ -24,7 +24,6 @@ def test_defaults(monkeypatch):
     s = Settings(_env_file=None)
     assert s.ocr_model == "mistral-ocr-2512"
     assert s.output_formats == ["pdf", "docx"]
-    assert s.header_footer_policy == "keep_once"
 
 
 def test_get_settings_overrides(monkeypatch):

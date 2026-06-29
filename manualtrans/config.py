@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     openrouter_models: Annotated[list[str], NoDecode] = []
     ocr_model: str = "mistral-ocr-2512"
     output_formats: Annotated[list[str], NoDecode] = ["pdf", "docx"]
-    header_footer_policy: str = "keep_once"
+    # NB: the header/footer policy lives in glossary.yaml (assemble reads it from
+    # there); it is intentionally NOT a setting to avoid two sources of truth.
     model_attempts: int = 2
     translate_concurrency: int = 8
     cache_dir: Path = Path(".cache")

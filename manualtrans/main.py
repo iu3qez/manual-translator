@@ -6,7 +6,7 @@ from typing import Optional
 
 import typer
 
-from . import layout
+from . import color, layout, pagerender
 from .assemble import assemble as assemble_doc
 from .cache import Cache
 from .check import check_document
@@ -134,6 +134,8 @@ def run(
     glossary: Path = typer.Option(Path("glossary.yaml"), "--glossary"),
     force: bool = typer.Option(False, "--force", help="proceed to render even if structure-parity checks fail"),
     no_layout: bool = typer.Option(False, "--no-layout", help="skip layout reconstruction"),
+    no_color: bool = typer.Option(False, "--no-color", help="skip attention-color preservation"),
+    no_cover: bool = typer.Option(False, "--no-cover", help="skip original-cover page"),
 ):
     s = get_settings()
     cache = Cache(s.cache_dir)
@@ -174,16 +176,28 @@ def run(
 
     css_path = None
     toc = False
+    cover_name = None
     use_layout = (not no_layout) and any(p.blocks for p in doc.pages)
     if use_layout:
         doc_it = layout.reclassify_headings(doc, doc_it)
         doc_it = layout.strip_ocr_toc(doc_it)
+        sizes = [(p.width, p.height) for p in doc.pages]
+        rasters = pagerender.rasterize_pages(input_pdf, sizes, media) if not (no_color and no_cover) else {}
+        if not no_color and rasters:
+            doc = color.annotate_block_colors(doc, rasters)
+            doc_it = layout.apply_block_colors(doc, doc_it)
+        if not no_cover and rasters.get(0):
+            cover_path = media / "cover.png"
+            pagerender.make_cover(rasters[0], cover_path)
+            cover_name = "cover.png"
         css_path = layout.write_css(layout.style_profile(doc), base.with_name(base.name + ".style.css"))
         toc = True
-        typer.echo("      layout: reconstructed heading levels + adaptive CSS", err=True)
+        typer.echo("      layout: heading levels + adaptive CSS"
+                   + ("" if no_color else " + colors")
+                   + ("" if no_cover else " + cover"), err=True)
 
     typer.echo(f"[3/4] Assembling → {md_path}", err=True)
-    md = assemble_doc(doc_it, header_footer_policy=gloss.header_footer_policy)
+    md = assemble_doc(doc_it, header_footer_policy=gloss.header_footer_policy, cover=cover_name)
     if use_layout:
         md = layout.wrap_callouts(md)
     md_path.write_text(md, encoding="utf-8")

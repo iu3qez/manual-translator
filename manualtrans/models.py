@@ -19,6 +19,7 @@ class Block(BaseModel):
     type: str
     bbox: list[float]
     content: str | None = None
+    color: str | None = None
 
 
 class Page(BaseModel):

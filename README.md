@@ -42,3 +42,14 @@ reflow) and generate a fresh one, and style NOTE/WARNING callouts.
 
 Use `--ocr-model ocr3` for the cheaper flat OCR-3 path (no layout), or `--no-layout`
 to skip reconstruction while still using OCR-4.
+
+### Color & cover (OCR-4)
+
+With OCR-4 the renderer also preserves attention-colored text (e.g. red "important"
+paragraphs) by sampling the source page rasters, and replaces the first page with the
+original cover image stamped "TRADUZIONE IN ITALIANO". Disable with `--no-color` or
+`--no-cover`.
+
+Note: attention-color is preserved in the **PDF** output; the DOCX keeps the text but
+not the color (cover image works in both). These features require `pdftoppm` from
+**poppler-utils** to be installed on the system.

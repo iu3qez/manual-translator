@@ -4,9 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Greenfield. The only artifact so far is `PRD_traduttore_manuali_pdf.md` (Italian) — the full
-spec. No code, tests, or build config exist yet. Read the PRD before implementing; the sections
-referenced below (§N) point into it.
+Implemented and on `master`: M1 (full pipeline), M2 layout (OCR-4 blocks → heading levels +
+adaptive CSS + generated TOC), visual fidelity (red/attention text color + original cover page).
+~87 pytest tests pass. PRD (`PRD_traduttore_manuali_pdf.md`, §N) is the original spec; design
+docs/plans live in `docs/superpowers/{specs,plans}/`. Where reality diverged from the PRD, the
+notes below win.
+
+## Commands & gotchas (learned)
+
+- **Tests:** `uv run --no-sync pytest -q`. The `--no-sync` is mandatory — plain `uv run` tries to
+  re-sync and times out (no network in the sandbox).
+- **Network:** sandboxed Bash has NO outbound network; API calls (Mistral/OpenRouter) and `uv add`
+  need `dangerouslyDisableSandbox: true`. `pdftoppm`/`pandoc`/`weasyprint` are local (fine sandboxed).
+- **mistralai is 2.5.0:** `from mistralai.client import Mistral`; OCR-4 (`include_blocks=True`) is slow
+  → client needs `timeout_ms=600000`; OCR tables use `tbl.content` (not `.html`); blocks expose
+  `top_left_x/y,bottom_right_x/y,type,content` + `dimensions(dpi,width,height)` — NO color.
+- **Translation = OpenRouter only** (httpx, OpenAI-compatible), `OPENROUTER_MODELS` ordered with
+  per-page fallback; NOT Anthropic/Google SDKs. `--ocr-model ocr3|ocr4` aliases map to the model ids.
+- **Render:** PDF is two-step pandoc→self-contained HTML→weasyprint (`-implicit_figures` off,
+  `--embed-resources`); cover via `--include-before-body` (PDF) / body prepend (DOCX); colored
+  `<span>` renders in PDF only (DOCX keeps text, drops color).
+- **Heading levels** come from the section NUMBER (1.→h1, 5.2→h2), not font size.
+- **Pillow HSV is 0-255 per channel** (not OpenCV's 0-179).
+- **Generated artifacts are gitignored** (`media/`, `*.doc*.json`, `*.docx`, `*.pdf`, `*.style.css`);
+  never commit them. `pdftoppm` (poppler-utils) is a prerequisite for OCR-4 color/cover.
+- Modules now include `layout.py`, `color.py`, `pagerender.py` beyond the PRD's planned set.
 
 ## What this is
 
@@ -37,8 +59,8 @@ boundary — don't let OCR-model specifics leak past `ocr.py`.
 Planned package layout (`manualtrans/`, §4):
 - `ocr.py` — wraps `mistralai` SDK; extracts base64 images to `media/` as files here (pandoc
   embeds from file paths, not data-URIs); placeholders in markdown point to relative paths.
-- `translate.py` — `Translator.translate(md, context) -> md` interface, **provider-abstracted**
-  (Anthropic + Google impls, configurable default). Unit of translation = one page, `temperature=0`.
+- `translate.py` — single `OpenRouterTranslator` (httpx); ordered `OPENROUTER_MODELS` with per-page
+  fallback + retry; unit = one page, `temperature=0`. (No Anthropic/Google SDKs — PRD diverged.)
 - `glossary.py` + `glossary.yaml` — `do_not_translate` (regex/strings) and `preferred` term map,
   injected into the prompt. The LLM decides in context; **no mechanical substitution** except
   placeholder protection downstream.
@@ -66,8 +88,9 @@ boundaries), and (OCR 4 only) block-count and confidence gating (§10).
 
 ## OCR model split
 
-Two Mistral models, selectable: `mistral-ocr-2512` (OCR 3, **default**, cheaper) and
-`mistral-ocr-latest` (OCR 4, opt-in). `include_blocks=True` only on OCR 4 — it enables per-block
+Two Mistral models via `--ocr-model ocr3|ocr4`: `mistral-ocr-2512` (OCR 3, flat) and
+`mistral-ocr-latest` (OCR 4, **default in config**, enables layout). NB: a stale `OCR_MODEL` in a
+local `.env` overrides the config default. `include_blocks=True` only on OCR 4 — it enables per-block
 classification + per-word confidence, which drive **selective translation** (translate only
 `text|title|list|caption`; copy `code|equation|table` verbatim) and the confidence gate. Without
 blocks (OCR 3), translate the whole page markdown and delegate exclusions to the prompt. M1 is

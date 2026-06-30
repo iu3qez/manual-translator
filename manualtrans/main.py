@@ -24,9 +24,10 @@ _OCR_ALIASES = {"ocr3": "mistral-ocr-2512", "ocr4": "mistral-ocr-latest"}
 
 
 def _resolve_ocr_model(flag: str | None, default: str) -> str:
-    if flag is None:
-        return default
-    return _OCR_ALIASES.get(flag, flag)
+    # alias-map BOTH the CLI flag and the .env/config default, so OCR_MODEL=ocr4
+    # works in .env too; raw model ids pass through unchanged.
+    chosen = flag if flag is not None else default
+    return _OCR_ALIASES.get(chosen, chosen)
 
 
 def _setup_logging(verbose: bool) -> None:

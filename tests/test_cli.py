@@ -88,6 +88,7 @@ def test_resolve_ocr_model_aliases():
     assert _resolve_ocr_model("ocr4", "mistral-ocr-2512") == "mistral-ocr-latest"
     assert _resolve_ocr_model(None, "mistral-ocr-latest") == "mistral-ocr-latest"
     assert _resolve_ocr_model("custom/model", "x") == "custom/model"
+    assert _resolve_ocr_model(None, "ocr4") == "mistral-ocr-latest"  # alias in .env default
 
 
 def test_run_has_no_color_and_no_cover_flags():

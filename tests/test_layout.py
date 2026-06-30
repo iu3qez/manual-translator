@@ -186,3 +186,20 @@ def test_apply_block_colors_skips_on_count_mismatch():
              pages=[Page(index=0, markdown="# Solo")])   # 1 segment vs 2 blocks
     out = apply_block_colors(en, it)
     assert out.pages[0].markdown == "# Solo"   # unchanged
+
+
+def test_strip_ocr_toc_removes_titleless_continuation_page():
+    # a TOC continuation page has many dotted-leader lines but NO "Contents" title
+    from manualtrans.models import Doc, Page
+    cont = ("7. Firmware Update...95\n"
+            "8. Terminal Applications...98\n"
+            "8.1 PC terminal emulator...98\n"
+            "8.2 Web-based terminal...99\n"
+            "9. Troubleshooting...101\n\n"
+            "Testo reale di pagina.")
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown=cont)])
+    out = strip_ocr_toc(doc)
+    md = out.pages[0].markdown
+    assert "....." not in md and "...95" not in md
+    assert "Testo reale di pagina." in md

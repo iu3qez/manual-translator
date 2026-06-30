@@ -95,17 +95,22 @@ def reclassify_headings(en_doc: Doc, it_doc: Doc, thresholds=(1.7, 1.35, 1.15)) 
     return out
 
 
+# A TOC may span several pages: the first carries the "Contents/Indice" heading,
+# continuation pages carry only dotted-leader lines. Treat a page as TOC when it
+# has a title + a few leaders, OR enough leaders on their own (continuation page).
+_MIN_TOC_LEADERS = 5
+
+
 def strip_ocr_toc(doc: Doc) -> Doc:
     out = doc.model_copy(deep=True)
     for page in out.pages:
         lines = page.markdown.splitlines()
         leader_idx = [i for i, ln in enumerate(lines) if _LEADER_RE.match(ln)]
-        if len(leader_idx) < 3:
-            continue
         title_idx = next((i for i, ln in enumerate(lines) if _TOC_TITLE_RE.match(ln)), None)
-        if title_idx is None:
+        is_toc = (title_idx is not None and len(leader_idx) >= 3) or len(leader_idx) >= _MIN_TOC_LEADERS
+        if not is_toc:
             continue
-        drop = set(leader_idx) | {title_idx}
+        drop = set(leader_idx) | ({title_idx} if title_idx is not None else set())
         kept = [ln for i, ln in enumerate(lines) if i not in drop]
         page.markdown = "\n".join(kept).strip()
     return out

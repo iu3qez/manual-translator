@@ -189,7 +189,7 @@ def _wrap_segment(seg: str, hex_color: str) -> str:
     m = HEADING_RE.match(seg)
     span = lambda txt: f'<span style="color:{hex_color}">{txt}</span>'
     if m:
-        return f"{m.group(1)} {span(m.group(2))}"
+        return f"{m.group(1)} {span(m.group(2))}{seg[m.end():]}"
     return span(seg)
 
 

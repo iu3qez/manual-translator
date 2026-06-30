@@ -160,6 +160,21 @@ def test_apply_block_colors_wraps_red_paragraph_and_heading():
     assert out.pages[0].markdown == '# <span style="color:#cc0000">Titolo</span>\n\nparagrafo'
 
 
+def test_apply_block_colors_multiline_heading_keeps_trailing_line():
+    """_wrap_segment must not drop lines after the first heading line."""
+    from manualtrans.models import Doc, Page
+    en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# T", blocks=[
+                 _B(type="title", bbox=[0, 0, 10, 10], color="#cc0000"),
+             ])])
+    it = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# Titolo\nsottotitolo")])
+    out = apply_block_colors(en, it)
+    result = out.pages[0].markdown
+    assert '# <span style="color:#cc0000">Titolo</span>' in result
+    assert "sottotitolo" in result
+
+
 def test_apply_block_colors_skips_on_count_mismatch():
     from manualtrans.models import Doc, Page
     en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",

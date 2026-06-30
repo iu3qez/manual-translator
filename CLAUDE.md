@@ -108,6 +108,32 @@ classification + per-word confidence, which drive **selective translation** (tra
 blocks (OCR 3), translate the whole page markdown and delegate exclusions to the prompt. M1 is
 OCR-3-only; OCR-4 features land in M2 (§13).
 
+## OCR-model-dependent workarounds (revisit if Mistral OCR changes!)
+
+These fixes compensate for **specific, observed quirks of the current Mistral OCR output**, not
+for anything intrinsic to the source PDFs. If the OCR model is upgraded or swapped, re-validate each
+one on fresh output — the quirk may be gone (workaround becomes dead weight) or may have shifted
+shape (workaround silently under/over-fires). Each site is tagged in code with a pointer back here.
+
+- **Dropped list markers → list collapse.** Mistral drops the `- ` on the *first* (sometimes
+  interior) list item, emitting a bare line glued directly above the surviving `- ` items with no
+  blank line. pandoc (default `lists_without_preceding_blankline` off) then refuses to let the list
+  interrupt that paragraph and the **whole list collapses into one run-on paragraph**.
+  Fix: `assemble._fix_glued_lists` restores the marker (or, for a real `:`-terminated lead-in,
+  inserts a blank line). Tests: `test_assemble.py::test_dropped_first_bullet_*`.
+- **Full-page diagram fragmentation.** Mistral shreds a single edge-to-edge graphic (e.g. a rotated
+  PCB layout, source p.15) into several stacked image fragments + its own silkscreen labels; reflowed
+  they overflow 2–3 output pages (the diagram looks "broken"). Fix: `layout.is_full_page_graphic`
+  detects image-dominated, title-less, near-text-free pages and `layout.apply_full_page_rasters`
+  swaps the body for the **whole original PDF page rasterized as one fitted image** (reusing the
+  `pagerender` rasters already produced for colour/cover). Detector thresholds (`min_image_frac`,
+  `max_text_chars`) are tuned to the current fragmentation pattern. Disable with `run --no-fullpage`.
+  Tests: `test_layout.py::test_full_page_graphic_*`, `test_apply_full_page_rasters_*`.
+- **Safety net (model-independent):** `img { max-height: <page content height> }` in `render_css`
+  caps any over-tall image to one page regardless of source — keep even if the OCR quirks above go away.
+- Pre-existing quirks already documented above/in §10: silent table-row drop at page-split boundaries
+  (caught by `check`/`assemble` parity), OCR table HTML via `tbl.content`, blocks carry no colour.
+
 ## The translation prompt is the heart of the project (§6)
 
 Don't casually rewrite it. It's a system prompt parameterized with `{glossary}` enforcing: return

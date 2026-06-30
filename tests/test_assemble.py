@@ -91,3 +91,35 @@ def test_assemble_without_cover_unchanged():
                      Page(index=1, markdown="Pagina uno.")])
     out = assemble(doc)
     assert "Pagina zero." in out and "Pagina uno." in out
+
+
+# --- Mistral-OCR list-marker recovery (see CLAUDE.md "OCR-dependent workarounds") ---
+
+def test_dropped_first_bullet_marker_is_restored():
+    # Mistral OCR drops the marker on the first list item, gluing a bare line
+    # directly above the `- ` items (no blank line). pandoc would then collapse
+    # the whole list into one paragraph. assemble must promote the bare line.
+    d = doc_with("Tre versioni: 80, 60m\n- 5W da 9V\n- Segnale pulito")
+    out = assemble(d)
+    assert "- Tre versioni: 80, 60m" in out
+
+
+def test_lead_in_paragraph_gets_blank_line_not_a_bullet():
+    # A genuine lead-in sentence (ends with ':') glued to a list must NOT become a
+    # bullet; instead a blank line is inserted so the list still renders.
+    d = doc_with("Caratteristiche principali:\n- prima\n- seconda")
+    out = assemble(d)
+    assert "- Caratteristiche principali:" not in out
+    assert "Caratteristiche principali:\n\n- prima" in out
+
+
+def test_plain_paragraph_above_non_list_untouched():
+    d = doc_with("Solo un paragrafo.\nUn altro paragrafo.")
+    out = assemble(d)
+    assert out.strip() == "Solo un paragrafo.\nUn altro paragrafo."
+
+
+def test_existing_list_item_not_double_marked():
+    d = doc_with("- gia lista\n- seconda")
+    out = assemble(d)
+    assert "- - gia lista" not in out

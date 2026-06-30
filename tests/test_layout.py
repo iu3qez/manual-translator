@@ -145,6 +145,16 @@ def test_render_and_write_css(tmp_path):
     assert p.read_text(encoding="utf-8") == css
 
 
+def test_css_caps_image_height_to_one_page():
+    # Oversized images must not overflow/clip: cap at the page content height
+    # (A4 297mm - 2*18mm margin = 261mm). Also exposes a .fullpage class.
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="x",
+              pages=[Page(index=0, markdown="x")])
+    css = render_css(style_profile(doc))
+    assert "max-height: 261.0mm" in css
+    assert "img.fullpage" in css
+
+
 from manualtrans.layout import apply_block_colors
 from manualtrans.models import Block as _B
 
@@ -205,3 +215,76 @@ def test_strip_ocr_toc_removes_titleless_continuation_page():
     md = out.pages[0].markdown
     assert "....." not in md and "...95" not in md
     assert "Testo reale di pagina." in md
+
+
+# --- Mistral-OCR full-page-graphic recovery (see CLAUDE.md "OCR-dependent workarounds") ---
+
+from manualtrans.layout import is_full_page_graphic, apply_full_page_rasters
+from manualtrans.models import Image
+
+
+def _img_block(area_frac, w=1000.0, h=1000.0):
+    # one image block covering `area_frac` of a w*h page
+    import math
+    side = (area_frac * w * h) ** 0.5
+    return _B(type="image", bbox=[0, 0, side, side])
+
+
+def test_full_page_graphic_detected_for_image_only_page():
+    # OCR fragments a full-page diagram into several tall images + tiny labels
+    p = Page(index=3, markdown="![a](a)\n![b](b)", width=1000, height=1000,
+             blocks=[_B(type="image", bbox=[0, 0, 700, 700]),
+                     _B(type="image", bbox=[0, 700, 300, 1000]),
+                     _B(type="text", bbox=[0, 0, 50, 20], content="Rev 2")])
+    assert is_full_page_graphic(p) is True
+
+
+def test_page_with_captions_and_prose_not_a_graphic():
+    # real figure page: title captions + a paragraph -> NOT rasterized
+    p = Page(index=4, markdown="x", width=1000, height=1000,
+             blocks=[_B(type="title", bbox=[0, 0, 200, 30], content="Trace layout:"),
+                     _B(type="image", bbox=[0, 30, 600, 430]),
+                     _B(type="text", bbox=[0, 440, 900, 470],
+                        content="LCD and controls board are on the following page; "
+                                "there are no SMD components on the bottom side.")])
+    assert is_full_page_graphic(p) is False
+
+
+def test_text_page_not_a_graphic():
+    p = Page(index=1, markdown="x", width=1000, height=1000,
+             blocks=[_B(type="text", bbox=[0, 0, 900, 800], content="lots of prose " * 40)])
+    assert is_full_page_graphic(p) is False
+
+
+def test_apply_full_page_rasters_replaces_only_graphic_pages(tmp_path):
+    png = tmp_path / "page-3.png"
+    png.write_bytes(b"\x89PNG fake")
+    en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="testo", width=1000, height=1000,
+                         blocks=[_B(type="text", bbox=[0, 0, 900, 800], content="prose " * 50)]),
+                    Page(index=3, markdown="![a](a)\n![b](b)", width=1000, height=1000,
+                         blocks=[_B(type="image", bbox=[0, 0, 700, 700]),
+                                 _B(type="image", bbox=[0, 700, 300, 1000])])])
+    it = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="testo tradotto"),
+                    Page(index=3, markdown="![a](a)\n![b](b)",
+                         images=[Image(id="a", path="media/a"), Image(id="b", path="media/b")])])
+    out, replaced = apply_full_page_rasters(en, it, {3: png})
+    assert replaced == [3]
+    assert out.pages[0].markdown == "testo tradotto"           # text page untouched
+    assert "page-3.png" in out.pages[1].markdown               # graphic page replaced
+    assert "{.fullpage}" in out.pages[1].markdown
+    assert len(out.pages[1].images) == 1                       # one placeholder => one image
+    assert out.pages[1].images[0].id == "page-3.png"
+
+
+def test_apply_full_page_rasters_skips_indices(tmp_path):
+    png = tmp_path / "page-0.png"
+    png.write_bytes(b"x")
+    en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="![a](a)", width=1000, height=1000,
+                         blocks=[_B(type="image", bbox=[0, 0, 900, 900])])])
+    it = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="![a](a)", images=[Image(id="a", path="media/a")])])
+    out, replaced = apply_full_page_rasters(en, it, {0: png}, skip_indices={0})
+    assert replaced == []

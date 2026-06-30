@@ -5,7 +5,7 @@ import re
 import statistics
 from pathlib import Path
 
-from .models import Block, Doc
+from .models import Block, Doc, Image, Page
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,10 @@ def style_profile(doc: Doc) -> dict:
 
 def render_css(profile: dict) -> str:
     h = profile["headings"]
+    # Content height of one page (used to cap image height). A too-tall image
+    # otherwise overflows the page bottom / gets clipped; capping makes it shrink
+    # to fit on a single page, preserving aspect ratio.
+    content_h_mm = round(profile["page_h_mm"] - 2 * profile["margin_mm"], 1)
     return f"""@page {{ size: {profile['page_w_mm']}mm {profile['page_h_mm']}mm; margin: {profile['margin_mm']}mm; }}
 body {{ font-family: "DejaVu Sans", Arial, sans-serif; font-size: {profile['body_pt']}pt; line-height: {profile['line_height']}; }}
 h1 {{ font-size: {h[1]}pt; }}
@@ -164,8 +168,9 @@ h4 {{ font-size: {h[4]}pt; }}
 table {{ border-collapse: collapse; font-size: {profile['body_pt']}pt; }}
 th, td {{ border: 0.5pt solid #888; padding: 2pt 4pt; }}
 .callout {{ border-left: 3pt solid #36c; background: #eef3ff; padding: 4pt 8pt; margin: 6pt 0; }}
-img {{ max-width: 100%; }}
+img {{ max-width: 100%; max-height: {content_h_mm}mm; }}
 img.cover {{ width: 100%; display: block; }}
+img.fullpage {{ display: block; margin: 0 auto; max-width: 100%; max-height: {content_h_mm}mm; }}
 """
 
 
@@ -178,6 +183,72 @@ def write_css(profile: dict, path) -> Path:
     path = Path(path)
     path.write_text(render_css(profile), encoding="utf-8")
     return path
+
+
+def is_full_page_graphic(page: Page, min_image_frac: float = 0.40,
+                         max_text_chars: int = 140) -> bool:
+    """True for a source page that is essentially ONE full-page diagram.
+
+    Mistral OCR shreds a single edge-to-edge graphic (e.g. a rotated PCB layout)
+    into several stacked image fragments interleaved with the diagram's own
+    silkscreen labels ("Rev 2", "QMX Transceiver", …). Reflowed, those fragments
+    overflow across two or three output pages — the diagram is "broken". For such
+    pages we instead embed the whole original PDF page as one fitted image.
+
+    A page qualifies when it is image-dominated AND carries no real document text:
+      * has at least one ``image`` block;
+      * has NO ``title`` block (a caption/heading means it's a real figure page,
+        e.g. the "Trace layout: / Top side components:" page, which reflows fine);
+      * total translatable text is under ``max_text_chars`` (only board labels);
+      * image blocks cover at least ``min_image_frac`` of the page area.
+
+    Compensates for current Mistral OCR fragmentation; revisit if the OCR model
+    changes (see CLAUDE.md "OCR-model-dependent workarounds").
+    """
+    if not page.blocks or not page.width or not page.height:
+        return False
+    img_blocks = [b for b in page.blocks if b.type == "image"]
+    if not img_blocks:
+        return False
+    if any(b.type == "title" for b in page.blocks):
+        return False
+    text_chars = sum(len((b.content or "").strip())
+                     for b in page.blocks if b.type in ("text", "title", "list"))
+    if text_chars > max_text_chars:
+        return False
+    page_area = page.width * page.height
+    img_area = sum(abs((b.bbox[2] - b.bbox[0]) * (b.bbox[3] - b.bbox[1]))
+                   for b in img_blocks)
+    return img_area / page_area >= min_image_frac
+
+
+def apply_full_page_rasters(en_doc: Doc, it_doc: Doc, rasters: dict,
+                            skip_indices=()) -> tuple[Doc, list[int]]:
+    """Replace each full-page-graphic page's body with its rasterized PDF page.
+
+    ``rasters`` maps page index → PNG path (produced by ``pagerender``). For every
+    page that ``is_full_page_graphic`` (per the EN doc's blocks/dimensions) and is
+    not in ``skip_indices``, the translated page's markdown becomes a single
+    ``.fullpage`` image of the original page, and its image/table lists are reset
+    to match (one placeholder ⇒ one declared image) so ``assemble`` still balances.
+    Returns the mutated ``it_doc`` and the list of replaced indices.
+    """
+    skip = set(skip_indices)
+    replaced: list[int] = []
+    for en_p, it_p in zip(en_doc.pages, it_doc.pages):
+        if en_p.index in skip:
+            continue
+        png = rasters.get(en_p.index)
+        if png and is_full_page_graphic(en_p):
+            name = Path(png).name
+            it_p.markdown = f"![pagina]({name}){{.fullpage}}\n"
+            it_p.images = [Image(id=name, path=str(png))]
+            it_p.tables = []
+            replaced.append(en_p.index)
+    if replaced:
+        logger.info("layout: rasterized %d full-page graphic(s): %s",
+                    len(replaced), replaced)
+    return it_doc, replaced
 
 
 _LIST_RE = re.compile(r"^\s*([-*+]\s|\d+\.\s)")

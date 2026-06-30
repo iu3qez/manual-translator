@@ -137,6 +137,7 @@ def run(
     no_layout: bool = typer.Option(False, "--no-layout", help="skip layout reconstruction"),
     no_color: bool = typer.Option(False, "--no-color", help="skip attention-color preservation"),
     no_cover: bool = typer.Option(False, "--no-cover", help="skip original-cover page"),
+    no_fullpage: bool = typer.Option(False, "--no-fullpage", help="skip rasterizing full-page-graphic pages"),
 ):
     s = get_settings()
     cache = Cache(s.cache_dir)
@@ -190,7 +191,9 @@ def run(
         doc_it = layout.reclassify_headings(doc_it)
         doc_it = layout.strip_ocr_toc(doc_it)
         sizes = [(p.width, p.height) for p in doc.pages]
-        rasters = pagerender.rasterize_pages(input_pdf, sizes, media) if not (no_color and no_cover) else {}
+        # rasters feed colour detection, the cover, AND full-page-graphic recovery
+        need_rasters = not (no_color and no_cover and no_fullpage)
+        rasters = pagerender.rasterize_pages(input_pdf, sizes, media) if need_rasters else {}
         if not no_color and rasters:
             doc = color.annotate_block_colors(doc, rasters)
             doc_it = layout.apply_block_colors(doc, doc_it)
@@ -198,6 +201,15 @@ def run(
             cover_path = media / "cover.png"
             pagerender.make_cover(rasters[0], cover_path)
             cover_name = "cover.png"
+        if not no_fullpage and rasters:
+            # OCR shreds full-page diagrams into stacked fragments that overflow
+            # several output pages; embed the whole original page instead. The
+            # cover page (0) is rendered separately, so never rasterize it here.
+            doc_it, raster_pages = layout.apply_full_page_rasters(
+                doc, doc_it, rasters, skip_indices={0} if cover_name else set())
+            if raster_pages:
+                typer.echo(f"      layout: {len(raster_pages)} full-page graphic(s) "
+                           f"rasterized → single fitted image", err=True)
         css_path = layout.write_css(layout.style_profile(doc), work / "style.css")
         toc = True
         typer.echo("      layout: heading levels + adaptive CSS"

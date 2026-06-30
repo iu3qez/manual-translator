@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from pathlib import Path
 
 from mistralai.client import Mistral
@@ -10,6 +11,19 @@ from .cache import Cache, file_hash
 from .models import Block, Doc, Image, Page, Table
 
 logger = logging.getLogger(__name__)
+
+# Mistral OCR-4 renders small inline icon glyphs it can't transcribe as text
+# (e.g. a lock icon in a status-icon legend) as a markdown image with an
+# empty href: ![lock icon](). No image data backs these — they never appear
+# in the page's `images` list — which breaks the image-placeholder/image-count
+# invariant relied on by assemble.py and check.py. Strip them at parse time so
+# doc.json never carries them. Revisit if Mistral OCR changes (see CLAUDE.md
+# "OCR-model-dependent workarounds").
+_DATALESS_ICON_RE = re.compile(r"!\[[^\]]*\]\(\s*\)\s*")
+
+
+def _strip_dataless_icon_placeholders(markdown: str) -> str:
+    return _DATALESS_ICON_RE.sub("", markdown)
 
 
 def _decode_base64(data: str) -> bytes:
@@ -54,7 +68,7 @@ def parse_ocr_response(
         pages.append(
             Page(
                 index=i,
-                markdown=p.markdown,
+                markdown=_strip_dataless_icon_placeholders(p.markdown),
                 images=images,
                 tables=tables,
                 header=getattr(p, "header", None),

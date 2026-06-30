@@ -95,3 +95,27 @@ def test_parse_no_blocks_ok(tmp_path):
     doc = parse_ocr_response(resp, "m.pdf", "H", "mistral-ocr-2512", tmp_path / "media")
     assert doc.pages[0].blocks == []
     assert doc.pages[0].dpi is None
+
+
+def test_parse_strips_dataless_icon_placeholders(tmp_path):
+    # Mistral OCR-4 represents small inline icon glyphs (e.g. a lock icon in
+    # an icon legend) as markdown images with an empty href and no backing
+    # image data: ![lock icon](). They never appear in the page's images
+    # list, so they must not be counted as real image placeholders downstream
+    # (see CLAUDE.md "OCR-model-dependent workarounds").
+    resp = SimpleNamespace(pages=[SimpleNamespace(
+        markdown="**VFO Icons:** ![lock icon]() Shows locked.\n\n"
+                  "![img-8.jpeg](img-8.jpeg)\n\n"
+                  "![lock icon]() Message playback.",
+        images=[SimpleNamespace(
+            id="img-8.jpeg",
+            image_base64=base64.b64encode(b"\xff\xd8jpegbytes").decode(),
+        )],
+        tables=[],
+    )])
+    doc = parse_ocr_response(resp, "m.pdf", "H", "mistral-ocr-latest", tmp_path / "media")
+    pg = doc.pages[0]
+    assert "![lock icon]()" not in pg.markdown
+    assert "![img-8.jpeg](img-8.jpeg)" in pg.markdown
+    import re
+    assert len(re.findall(r"!\[[^\]]*\]\([^)]*\)", pg.markdown)) == len(pg.images) == 1

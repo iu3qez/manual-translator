@@ -15,13 +15,22 @@ class RenderError(Exception):
 _TOC_DEPTH = 2  # keep the generated index short (chapters + one sub-level)
 
 
+def _resource_path(media_dir: Path) -> str:
+    """pandoc resolves image paths against CWD/resource-path, NOT the .md's dir.
+    Placeholders are "media/<id>" (see ocr.py), so resource-path must include the
+    dir CONTAINING media/ for those to resolve, plus media/ itself for the bare
+    cover filename. This makes resolution independent of CWD and of where the work
+    dir lives (e.g. .cache/<name>/)."""
+    return f"--resource-path={media_dir}{os.pathsep}{media_dir.parent}"
+
+
 def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path, toc: bool = False) -> list[str]:
     """Pandoc command for a native output (DOCX): pandoc embeds images itself."""
     cmd = [
         "pandoc",
         str(md_path),
         "--from=markdown+raw_html-implicit_figures",
-        f"--resource-path={media_dir}",
+        _resource_path(media_dir),
         "-o",
         str(out_path),
     ]
@@ -43,7 +52,7 @@ def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path,
         "pandoc",
         str(md_path),
         "--from=markdown+raw_html-implicit_figures",
-        f"--resource-path={media_dir}",
+        _resource_path(media_dir),
         "--standalone",
         "--embed-resources",
         "-t",

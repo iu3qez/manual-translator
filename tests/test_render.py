@@ -27,6 +27,43 @@ def test_weasyprint_cmd(tmp_path: Path):
     assert str(tmp_path / "out.pdf") in cmd
 
 
+def test_resource_path_covers_media_and_its_parent(tmp_path: Path):
+    # placeholders are "media/<id>" (CWD/resource-path-relative, not md-relative),
+    # so resource-path must include the dir CONTAINING media/ (so "media/<id>"
+    # resolves) as well as media/ itself (so a bare cover filename resolves) —
+    # regardless of CWD or where the work dir lives.
+    import os
+    media = tmp_path / "work" / "media"
+    for build in (
+        build_pandoc_cmd(tmp_path / "in.md", tmp_path / "out.docx", media),
+        build_html_cmd(tmp_path / "in.md", tmp_path / "out.html", media),
+    ):
+        rp = next(a for a in build if a.startswith("--resource-path="))
+        entries = rp.split("=", 1)[1].split(os.pathsep)
+        assert str(media) in entries
+        assert str(media.parent) in entries
+
+
+@pytest.mark.skipif(not __import__("shutil").which("pandoc"), reason="pandoc not installed")
+def test_docx_embeds_body_image_when_media_outside_cwd(tmp_path: Path):
+    # regression: media/ no longer lives in CWD (it's under .cache/<name>/), so a
+    # "media/<id>" placeholder must still embed via resource-path.
+    import zipfile
+    from PIL import Image
+    from manualtrans.render import render
+
+    media = tmp_path / "cache" / "rt95" / "media"
+    media.mkdir(parents=True)
+    Image.new("RGB", (20, 20), (0, 150, 0)).save(media / "img-0.png")
+    md = media.parent / "output.md"
+    md.write_text("# T\n\n![](media/img-0.png)\n\ntesto\n", encoding="utf-8")
+
+    deliver = tmp_path / "deliver"; deliver.mkdir()
+    (out,) = render(md, deliver / "rt95", ["docx"], media)
+    with zipfile.ZipFile(out) as z:
+        assert any(n.startswith("word/media/") for n in z.namelist()), "body image dropped"
+
+
 def test_docx_cmd_no_pdf_engine(tmp_path: Path):
     cmd = build_pandoc_cmd(tmp_path / "in.md", tmp_path / "out.docx", tmp_path / "media")
     assert not any("pdf-engine" in a for a in cmd)

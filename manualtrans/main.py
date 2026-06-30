@@ -140,11 +140,18 @@ def run(
 ):
     s = get_settings()
     cache = Cache(s.cache_dir)
-    base = out
-    doc_json = base.with_name(base.name + ".doc.json")
-    doc_it_json = base.with_name(base.name + ".doc_it.json")
-    md_path = base.parent / (base.name + ".md")
-    media = base.with_name("media")
+    base = out  # final deliverable basename (DOCX/PDF land here, at --out)
+    # All intermediates (json/md/css/media) are working files, not deliverables:
+    # keep them out of the output dir in a per-input work dir under the cache.
+    # media/ stays named "media" and sibling to the .md so the hardcoded
+    # "media/<id>" placeholders (ocr.py) still resolve.
+    work = s.cache_dir / out.name
+    work.mkdir(parents=True, exist_ok=True)
+    base.parent.mkdir(parents=True, exist_ok=True)  # deliverable dir for --out
+    doc_json = work / "doc.json"
+    doc_it_json = work / "doc_it.json"
+    md_path = work / "output.md"
+    media = work / "media"
 
     model = _resolve_ocr_model(ocr_model, s.ocr_model)
     typer.echo(f"[1/4] OCR {input_pdf} (model {model})…", err=True)
@@ -191,7 +198,7 @@ def run(
             cover_path = media / "cover.png"
             pagerender.make_cover(rasters[0], cover_path)
             cover_name = "cover.png"
-        css_path = layout.write_css(layout.style_profile(doc), base.with_name(base.name + ".style.css"))
+        css_path = layout.write_css(layout.style_profile(doc), work / "style.css")
         toc = True
         typer.echo("      layout: heading levels + adaptive CSS"
                    + ("" if no_color else " + colors")

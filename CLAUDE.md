@@ -30,8 +30,16 @@ notes below win.
   TOC is itself an unpopulated `w:dirty` field Word fills in, so nothing is lost). See `render.py`.
 - **Heading levels** come from the section NUMBER (1.→h1, 5.2→h2), not font size.
 - **Pillow HSV is 0-255 per channel** (not OpenCV's 0-179).
-- **Generated artifacts are gitignored** (`media/`, `*.doc*.json`, `*.docx`, `*.pdf`, `*.style.css`);
-  never commit them. `pdftoppm` (poppler-utils) is a prerequisite for OCR-4 color/cover.
+- **`run` work dir:** `run` writes only the DOCX/PDF at `--out`; all intermediates
+  (`doc.json`, `doc_it.json`, `output.md`, `style.css`, `media/`) go to `.cache/<out.name>/`
+  (the SHA-keyed API cache stays in `.cache/` root). Per-stage commands are unchanged (defaults
+  still land in the CWD: `doc.json`, `media/`, …).
+- **Image resolution:** placeholders are `media/<id>` (`ocr.py`), and pandoc resolves image paths
+  against CWD/`--resource-path`, **NOT** the `.md`'s dir. So `render._resource_path` passes BOTH
+  `media_dir` (for the bare cover filename) and its parent (so `media/<id>` resolves) — this is
+  why moving `media/` out of the CWD (into `.cache/`) didn't drop body images.
+- **Generated artifacts are gitignored** (`media/`, `*.doc*.json`, `*.docx`, `*.pdf`, `*.style.css`,
+  `.cache/`); never commit them. `pdftoppm` (poppler-utils) is a prerequisite for OCR-4 color/cover.
 - Modules now include `layout.py`, `color.py`, `pagerender.py` beyond the PRD's planned set.
 
 ## What this is

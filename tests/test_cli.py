@@ -91,6 +91,48 @@ def test_resolve_ocr_model_aliases():
     assert _resolve_ocr_model(None, "ocr4") == "mistral-ocr-latest"  # alias in .env default
 
 
+def test_run_keeps_intermediates_in_cache_workdir(tmp_path: Path, monkeypatch):
+    from manualtrans.config import Settings
+
+    doc = _make_doc("# Heading\n\nText")  # same EN/IT structure → no parity problems
+    ocr_args = {}
+    render_args = {}
+
+    def fake_ocr(input_pdf, out, media, *a, **k):
+        ocr_args["out"] = out
+        ocr_args["media"] = media
+        return doc
+
+    monkeypatch.setattr("manualtrans.main.run_ocr", fake_ocr)
+    monkeypatch.setattr("manualtrans.main.translate_document", lambda *a, **k: doc)
+    monkeypatch.setattr(
+        "manualtrans.main.render_md",
+        lambda md_path, base, *a, **k: render_args.update(md=md_path, base=base) or [base],
+    )
+    cache_dir = tmp_path / ".cache"
+    monkeypatch.setattr(
+        "manualtrans.main.get_settings",
+        lambda: Settings(openrouter_models=["m"], cache_dir=cache_dir),
+    )
+
+    out = tmp_path / "deliver" / "rt95"  # final basename, in its own dir
+    result = runner.invoke(app, ["run", "input.pdf", "--out", str(out)])
+    assert result.exit_code == 0, result.output
+
+    work = cache_dir / "rt95"
+    # intermediates live under .cache/<basename>/, NOT next to --out
+    assert ocr_args["out"] == work / "doc.json"
+    assert ocr_args["media"] == work / "media"
+    assert (work / "doc_it.json").exists()
+    assert (work / "output.md").exists()
+    # final render output basename stays at --out
+    assert render_args["base"] == out
+    assert render_args["md"] == work / "output.md"
+    # nothing intermediate leaked next to the deliverable
+    assert not (out.parent / "media").exists()
+    assert not (out.parent / "rt95.doc.json").exists()
+
+
 def test_run_has_no_color_and_no_cover_flags():
     from manualtrans.main import run
     import inspect

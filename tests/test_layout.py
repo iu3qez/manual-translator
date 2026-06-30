@@ -141,3 +141,33 @@ def test_render_and_write_css(tmp_path):
     assert "@page" in css and "body" in css and ".callout" in css and "h1" in css
     p = write_css(style_profile(doc), tmp_path / "style.css")
     assert p.read_text(encoding="utf-8") == css
+
+
+from manualtrans.layout import apply_block_colors
+from manualtrans.models import Block as _B
+
+
+def test_apply_block_colors_wraps_red_paragraph_and_heading():
+    from manualtrans.models import Doc, Page
+    en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# T\n\npara", blocks=[
+                 _B(type="title", bbox=[0, 0, 10, 10], color="#cc0000"),
+                 _B(type="text", bbox=[0, 20, 10, 30], color=None),
+             ])])
+    it = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# Titolo\n\nparagrafo")])
+    out = apply_block_colors(en, it)
+    assert out.pages[0].markdown == '# <span style="color:#cc0000">Titolo</span>\n\nparagrafo'
+
+
+def test_apply_block_colors_skips_on_count_mismatch():
+    from manualtrans.models import Doc, Page
+    en = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# T", blocks=[
+                 _B(type="title", bbox=[0, 0, 10, 10], color="#cc0000"),
+                 _B(type="text", bbox=[0, 20, 10, 30], color="#cc0000"),
+             ])])
+    it = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+             pages=[Page(index=0, markdown="# Solo")])   # 1 segment vs 2 blocks
+    out = apply_block_colors(en, it)
+    assert out.pages[0].markdown == "# Solo"   # unchanged

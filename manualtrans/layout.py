@@ -167,6 +167,53 @@ def write_css(profile: dict, path) -> Path:
     return path
 
 
+_LIST_RE = re.compile(r"^\s*([-*+]\s|\d+\.\s)")
+_TABLE_PLACEHOLDER_RE = re.compile(r"^\[[^\]]+\.html\]\([^)]*\)\s*$")
+
+
+def _is_colorable_segment(seg: str) -> bool:
+    s = seg.strip()
+    if not s:
+        return False
+    first = s.splitlines()[0].lstrip()
+    if first.startswith(("![", "<table", "<div")):
+        return False
+    if _TABLE_PLACEHOLDER_RE.match(first):
+        return False
+    if _LIST_RE.match(first):
+        return False
+    return True
+
+
+def _wrap_segment(seg: str, hex_color: str) -> str:
+    m = HEADING_RE.match(seg)
+    span = lambda txt: f'<span style="color:{hex_color}">{txt}</span>'
+    if m:
+        return f"{m.group(1)} {span(m.group(2))}"
+    return span(seg)
+
+
+def apply_block_colors(en_doc: Doc, it_doc: Doc) -> Doc:
+    out = it_doc.model_copy(deep=True)
+    colored = skipped = 0
+    for en_page, it_page in zip(en_doc.pages, out.pages):
+        blocks = [b for b in sorted(en_page.blocks, key=lambda b: b.bbox[1])
+                  if b.type in ("title", "text")]
+        segments = it_page.markdown.split("\n\n")
+        colorable_idx = [i for i, s in enumerate(segments) if _is_colorable_segment(s)]
+        if not blocks or len(blocks) != len(colorable_idx):
+            if any(b.color for b in blocks):
+                skipped += 1
+            continue
+        for blk, idx in zip(blocks, colorable_idx):
+            if blk.color:
+                segments[idx] = _wrap_segment(segments[idx], blk.color)
+                colored += 1
+        it_page.markdown = "\n\n".join(segments)
+    logger.info("layout: colored %d block(s), %d page(s) skipped (count mismatch)", colored, skipped)
+    return out
+
+
 _CALLOUT_RE = re.compile(r"^(note|nota|warning|attenzione|caution|avvertenza)\b[:\s]",
                          re.IGNORECASE)
 

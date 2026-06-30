@@ -166,3 +166,52 @@ def test_docx_cover_prepends_to_body(tmp_path):
 
     render(md, tmp_path / "out", ["docx"], tmp_path / "media", runner=runner, toc=True, cover=cover)
     assert "![cover](cover.png)" in seen_content[0]   # cover prepended to docx body
+
+
+def test_docx_cover_precedes_toc(tmp_path):
+    # pandoc's --toc emits the index at the document top, above the cover. With a
+    # cover, the TOC must instead be injected (as a raw-OpenXML field) into the
+    # body AFTER the cover, and pandoc's own --toc suppressed.
+    from manualtrans.render import render
+    md = tmp_path / "in.md"; md.write_text("# H\n\nbody", encoding="utf-8")
+    cover = tmp_path / "media" / "cover.png"; cover.parent.mkdir(); cover.write_bytes(b"x")
+    calls = []
+    seen_content = []
+
+    class R:
+        returncode = 0
+        stderr = ""
+
+    def runner(cmd, **k):
+        calls.append(cmd)
+        seen_content.append(Path(cmd[1]).read_text(encoding="utf-8"))
+        return R()
+
+    render(md, tmp_path / "out", ["docx"], tmp_path / "media", runner=runner, toc=True, cover=cover)
+    src = seen_content[0]
+    # pandoc must NOT add its own top-of-document TOC
+    assert "--toc" not in calls[0]
+    # the TOC field is injected into the body, after the cover image
+    assert "docPartGallery" in src and 'TOC \\o "1-2"' in src
+    assert src.index("![cover](cover.png)") < src.index("docPartGallery")
+
+
+@pytest.mark.skipif(not __import__("shutil").which("pandoc"), reason="pandoc not installed")
+def test_docx_cover_before_toc_real_pandoc(tmp_path):
+    # end-to-end through real pandoc: the produced .docx must order the cover
+    # image before the generated TOC field, with the image embedded.
+    import zipfile
+    from PIL import Image
+    from manualtrans.render import render
+
+    media = tmp_path / "media"; media.mkdir()
+    Image.new("RGB", (40, 40), (200, 0, 0)).save(media / "cover.png")
+    md = tmp_path / "in.md"
+    md.write_text("# Primo\n\ntesto\n\n## Sotto\n\naltro\n", encoding="utf-8")
+
+    (out,) = render(md, tmp_path / "out", ["docx"], media, toc=True, cover=media / "cover.png")
+
+    with zipfile.ZipFile(out) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+        assert any(n.startswith("word/media/") for n in z.namelist())  # cover embedded
+    assert xml.index("<w:drawing") < xml.index("docPartGallery") < xml.index("Primo")

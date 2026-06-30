@@ -85,18 +85,48 @@ def _cover_before_body(cover: Path) -> Path:
     return p
 
 
-def _md_with_cover(md_path: Path, cover: Path) -> Path:
+# A page break and a TOC field as raw OpenXML, for in-body placement in DOCX.
+# pandoc's --toc emits the index at the very top of the document, ABOVE any cover
+# prepended to the body; raw HTML (the page-break div / an <img>) is dropped by
+# the docx writer. So when a cover is present we suppress --toc and inject the
+# field here, after the cover. Like pandoc's own --toc, it's an unpopulated field
+# (w:dirty) that Word fills in on open/update — nothing is lost.
+_PAGE_BREAK_OPENXML = (
+    '```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n\n'
+)
+
+
+def _toc_openxml(depth: int) -> str:
+    return (
+        "```{=openxml}\n"
+        "<w:sdt><w:sdtPr><w:docPartObj>"
+        '<w:docPartGallery w:val="Table of Contents" /><w:docPartUnique />'
+        "</w:docPartObj></w:sdtPr><w:sdtContent>"
+        '<w:p><w:pPr><w:pStyle w:val="TOCHeading" /></w:pPr>'
+        '<w:r><w:t xml:space="preserve">Table of Contents</w:t></w:r></w:p>'
+        '<w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true" />'
+        f'<w:instrText xml:space="preserve">TOC \\o "1-{depth}" \\h \\z \\u</w:instrText>'
+        '<w:fldChar w:fldCharType="separate" /><w:fldChar w:fldCharType="end" /></w:r></w:p>'
+        "</w:sdtContent></w:sdt>\n"
+        "```\n\n"
+    )
+
+
+def _md_with_cover(md_path: Path, cover: Path, toc: bool = False) -> Path:
     """Temp markdown with the cover image prepended (DOCX path: include-before-body
-    does not embed raw-HTML images into DOCX, so the cover goes in the body)."""
+    does not embed raw-HTML images into DOCX, so the cover goes in the body).
+
+    When ``toc`` is set, the index is injected (as a raw-OpenXML field) right after
+    the cover so it lands AFTER the cover page — pandoc's own --toc would sit above
+    it. Callers must then NOT pass --toc to pandoc."""
     fd, name = tempfile.mkstemp(suffix=".md")
     os.close(fd)
     p = Path(name)
-    p.write_text(
-        f"![cover]({cover.name}){{.cover}}\n\n"
-        '<div style="page-break-after: always"></div>\n\n'
-        + md_path.read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
+    parts = [f"![cover]({cover.name}){{.cover}}\n\n", _PAGE_BREAK_OPENXML]
+    if toc:
+        parts.append(_toc_openxml(_TOC_DEPTH))
+    parts.append(md_path.read_text(encoding="utf-8"))
+    p.write_text("".join(parts), encoding="utf-8")
     return p
 
 
@@ -137,9 +167,16 @@ def render(
                 if before:
                     before.unlink(missing_ok=True)
         else:
-            src = _md_with_cover(md_path, cover) if cover else md_path
+            # with a cover the TOC is injected into the body (after the cover) so
+            # it follows the cover page; pandoc's own --toc would sit above it.
+            if cover:
+                src = _md_with_cover(md_path, cover, toc=toc)
+                cmd = build_pandoc_cmd(src, out_path, media_dir, toc=False)
+            else:
+                src = md_path
+                cmd = build_pandoc_cmd(src, out_path, media_dir, toc=toc)
             try:
-                _run(runner, build_pandoc_cmd(src, out_path, media_dir, toc=toc), "pandoc")
+                _run(runner, cmd, "pandoc")
             finally:
                 if cover:
                     src.unlink(missing_ok=True)

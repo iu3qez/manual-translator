@@ -24,6 +24,10 @@ notes below win.
 - **Render:** PDF is two-step pandoc→self-contained HTML→weasyprint (`-implicit_figures` off,
   `--embed-resources`); cover via `--include-before-body` (PDF) / body prepend (DOCX); colored
   `<span>` renders in PDF only (DOCX keeps text, drops color).
+- **TOC order:** `pandoc --toc` emits the index at the document TOP, above the cover. PDF is fine
+  (`--include-before-body` precedes the toc nav in the template). DOCX with a cover: `--toc` is
+  suppressed and the TOC injected as a raw-OpenXML field in the body AFTER the cover (pandoc's docx
+  TOC is itself an unpopulated `w:dirty` field Word fills in, so nothing is lost). See `render.py`.
 - **Heading levels** come from the section NUMBER (1.→h1, 5.2→h2), not font size.
 - **Pillow HSV is 0-255 per channel** (not OpenCV's 0-179).
 - **Generated artifacts are gitignored** (`media/`, `*.doc*.json`, `*.docx`, `*.pdf`, `*.style.css`);

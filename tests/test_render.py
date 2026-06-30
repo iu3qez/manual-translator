@@ -99,7 +99,7 @@ def test_html_cmd_css_and_toc(tmp_path):
     cmd = build_html_cmd(tmp_path / "in.md", tmp_path / "o.html", tmp_path / "media",
                          css=tmp_path / "s.css", toc=True)
     assert any(a == f"--css={tmp_path / 's.css'}" for a in cmd)
-    assert "--toc" in cmd and "--toc-depth=3" in cmd
+    assert "--toc" in cmd and "--toc-depth=2" in cmd
 
 
 def test_pandoc_cmd_toc(tmp_path):
@@ -126,3 +126,43 @@ def test_render_threads_css_and_toc(tmp_path):
     flat = [a for c in calls for a in c]
     assert any(a == f"--css={tmp_path / 's.css'}" for a in flat)  # pdf html step
     assert flat.count("--toc") == 2  # pdf html + docx
+
+
+def test_pdf_cover_uses_before_body_and_toc_depth_2(tmp_path):
+    from manualtrans.render import render
+    md = tmp_path / "in.md"; md.write_text("# H", encoding="utf-8")
+    cover = tmp_path / "media" / "cover.png"; cover.parent.mkdir(); cover.write_bytes(b"x")
+    calls = []
+
+    class R:
+        returncode = 0
+        stderr = ""
+
+    def runner(cmd, **k):
+        calls.append(cmd)
+        return R()
+
+    render(md, tmp_path / "out", ["pdf"], tmp_path / "media", runner=runner, toc=True, cover=cover)
+    html_cmd = next(c for c in calls if "html5" in c)
+    assert "--include-before-body" in html_cmd            # cover before TOC
+    assert "--toc-depth=2" in html_cmd                    # shorter index
+
+
+def test_docx_cover_prepends_to_body(tmp_path):
+    from manualtrans.render import render
+    md = tmp_path / "in.md"; md.write_text("# H\n\nbody", encoding="utf-8")
+    cover = tmp_path / "media" / "cover.png"; cover.parent.mkdir(); cover.write_bytes(b"x")
+    from pathlib import Path
+    seen_content = []
+
+    class R:
+        returncode = 0
+        stderr = ""
+
+    def runner(cmd, **k):
+        # docx pandoc input is the 2nd arg; read it NOW (render unlinks it after)
+        seen_content.append(Path(cmd[1]).read_text(encoding="utf-8"))
+        return R()
+
+    render(md, tmp_path / "out", ["docx"], tmp_path / "media", runner=runner, toc=True, cover=cover)
+    assert "![cover](cover.png)" in seen_content[0]   # cover prepended to docx body

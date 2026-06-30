@@ -204,6 +204,7 @@ def run(
 
     formats = [f.strip() for f in to.split(",")] if to else s.output_formats
     typer.echo(f"[4/4] Rendering {', '.join(formats)} via pandoc…", err=True)
-    produced = render_md(md_path, base, formats, media, css=css_path, toc=toc)
+    cover_img = (media / "cover.png") if cover_name else None
+    produced = render_md(md_path, base, formats, media, css=css_path, toc=toc, cover=cover_img)
     for p in produced:
         typer.echo(f"wrote {p}")

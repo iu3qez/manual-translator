@@ -16,10 +16,9 @@ class AssembleError(Exception):
 
 
 def assemble(doc: Doc, header_footer_policy: str = "keep_once", cover: str | None = None) -> str:
-    from .layout import cover_markdown
+    # `cover` truthy means the cover is rendered separately (see render.py), so
+    # page 0's reflowed body is omitted here; the image is NOT injected in the body.
     parts: list[str] = []
-    if cover:
-        parts.append(cover_markdown(cover))
 
     for page in doc.pages:
         if cover and page.index == 0:

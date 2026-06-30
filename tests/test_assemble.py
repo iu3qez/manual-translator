@@ -77,9 +77,10 @@ def test_assemble_with_cover_replaces_page0():
               pages=[Page(index=0, markdown="# Copertina testo OCR"),
                      Page(index=1, markdown="Contenuto vero.")])
     out = assemble(doc, cover="cover.png")
-    assert "![cover](cover.png)" in out
     assert "Copertina testo OCR" not in out      # page 0 body dropped
     assert "Contenuto vero." in out              # page 1 kept
+    # the cover image is injected by render (per-format), NOT in the assembled body
+    assert "![cover]" not in out
 
 
 def test_assemble_without_cover_unchanged():

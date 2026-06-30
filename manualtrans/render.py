@@ -12,6 +12,9 @@ class RenderError(Exception):
     pass
 
 
+_TOC_DEPTH = 2  # keep the generated index short (chapters + one sub-level)
+
+
 def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path, toc: bool = False) -> list[str]:
     """Pandoc command for a native output (DOCX): pandoc embeds images itself."""
     cmd = [
@@ -23,12 +26,13 @@ def build_pandoc_cmd(md_path: Path, out_path: Path, media_dir: Path, toc: bool =
         str(out_path),
     ]
     if toc:
-        cmd += ["--toc", "--toc-depth=3"]
+        cmd += ["--toc", f"--toc-depth={_TOC_DEPTH}"]
     return cmd
 
 
 def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path,
-                   css: Path | None = None, toc: bool = False) -> list[str]:
+                   css: Path | None = None, toc: bool = False,
+                   before_body: Path | None = None) -> list[str]:
     """Standalone HTML with images inlined as data URIs.
 
     weasyprint resolves a relative ``<img src>`` against its own working dir, not
@@ -49,8 +53,12 @@ def build_html_cmd(md_path: Path, html_path: Path, media_dir: Path,
     ]
     if css is not None:
         cmd.append(f"--css={css}")
+    if before_body is not None:
+        # cover injected here so it lands BEFORE the generated TOC (pandoc
+        # template order: before-body → toc → body); --embed-resources inlines it.
+        cmd += ["--include-before-body", str(before_body)]
     if toc:
-        cmd += ["--toc", "--toc-depth=3"]
+        cmd += ["--toc", f"--toc-depth={_TOC_DEPTH}"]
     return cmd
 
 
@@ -64,6 +72,34 @@ def _run(runner, cmd: list[str], label: str) -> None:
         raise RenderError(f"{label} failed: {getattr(result, 'stderr', '')}")
 
 
+def _cover_before_body(cover: Path) -> Path:
+    """Temp HTML injected before the body so the cover precedes the TOC (PDF)."""
+    fd, name = tempfile.mkstemp(suffix=".html")
+    os.close(fd)
+    p = Path(name)
+    p.write_text(
+        f'<img class="cover" src="{cover.name}">\n'
+        '<div style="page-break-after: always"></div>\n',
+        encoding="utf-8",
+    )
+    return p
+
+
+def _md_with_cover(md_path: Path, cover: Path) -> Path:
+    """Temp markdown with the cover image prepended (DOCX path: include-before-body
+    does not embed raw-HTML images into DOCX, so the cover goes in the body)."""
+    fd, name = tempfile.mkstemp(suffix=".md")
+    os.close(fd)
+    p = Path(name)
+    p.write_text(
+        f"![cover]({cover.name}){{.cover}}\n\n"
+        '<div style="page-break-after: always"></div>\n\n'
+        + md_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return p
+
+
 def render(
     md_path: str | Path,
     out_base: str | Path,
@@ -72,10 +108,12 @@ def render(
     runner=subprocess.run,
     css: "Path | None" = None,
     toc: bool = False,
+    cover: "Path | None" = None,
 ) -> list[Path]:
     md_path = Path(md_path)
     out_base = Path(out_base)
     media_dir = Path(media_dir)
+    cover = Path(cover) if cover else None
     produced: list[Path] = []
     for fmt in formats:
         if fmt not in SUFFIX:
@@ -85,16 +123,25 @@ def render(
         out_path = out_base.parent / (out_base.name + SUFFIX[fmt])
         if fmt == "pdf":
             # two steps: pandoc -> self-contained HTML -> weasyprint -> PDF
+            # cover (if any) injected before-body so it precedes the TOC
             fd, tmp_name = tempfile.mkstemp(suffix=".html")
             os.close(fd)
             tmp_html = Path(tmp_name)
+            before = _cover_before_body(cover) if cover else None
             try:
-                _run(runner, build_html_cmd(md_path, tmp_html, media_dir, css=css, toc=toc),
-                     "pandoc (html)")
+                _run(runner, build_html_cmd(md_path, tmp_html, media_dir, css=css, toc=toc,
+                                            before_body=before), "pandoc (html)")
                 _run(runner, build_weasyprint_cmd(tmp_html, out_path), "weasyprint")
             finally:
                 tmp_html.unlink(missing_ok=True)
+                if before:
+                    before.unlink(missing_ok=True)
         else:
-            _run(runner, build_pandoc_cmd(md_path, out_path, media_dir, toc=toc), "pandoc")
+            src = _md_with_cover(md_path, cover) if cover else md_path
+            try:
+                _run(runner, build_pandoc_cmd(src, out_path, media_dir, toc=toc), "pandoc")
+            finally:
+                if cover:
+                    src.unlink(missing_ok=True)
         produced.append(out_path)
     return produced

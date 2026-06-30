@@ -30,6 +30,13 @@ def test_rasterize_pages_uses_runner_and_skips_empty(tmp_path):
     assert len(calls) == 2
 
 
+def test_rasterize_pages_missing_binary_returns_empty(tmp_path):
+    def runner(cmd, **k):
+        raise FileNotFoundError("pdftoppm")
+    out = rasterize_pages(tmp_path / "in.pdf", [(720, 1018)], tmp_path / "raster", runner=runner)
+    assert out == {}
+
+
 def test_make_cover_adds_watermark(tmp_path):
     src = tmp_path / "p1.png"
     Image.new("RGB", (300, 400), (255, 255, 255)).save(src)

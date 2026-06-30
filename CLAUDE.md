@@ -84,7 +84,8 @@ English while translating surrounding prose, translate only header/descriptive t
 
 Python 3.11+; `mistralai`, `anthropic`/`google-genai`, `typer`, `pydantic`, `pyyaml`, `httpx`
 (retry/backoff). **`pandoc` is a system binary prerequisite**, plus a PDF engine (xelatex or
-weasyprint). Tests via `pytest`. Env: `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`.
+weasyprint). **`pdftoppm` (poppler-utils) is a system prerequisite** for the OCR-4 layout
+color/cover features. Tests via `pytest`. Env: `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`.
 
 ## Intended CLI (§8)
 

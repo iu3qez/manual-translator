@@ -182,7 +182,7 @@ def run(
         doc_it = layout.reclassify_headings(doc, doc_it)
         doc_it = layout.strip_ocr_toc(doc_it)
         sizes = [(p.width, p.height) for p in doc.pages]
-        rasters = pagerender.rasterize_pages(input_pdf, sizes, media)
+        rasters = pagerender.rasterize_pages(input_pdf, sizes, media) if not (no_color and no_cover) else {}
         if not no_color and rasters:
             doc = color.annotate_block_colors(doc, rasters)
             doc_it = layout.apply_block_colors(doc, doc_it)

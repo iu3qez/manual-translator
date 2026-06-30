@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger(__name__)
 
 
 def build_pdftoppm_cmd(pdf, page_1based: int, width, height, out_prefix) -> list[str]:
@@ -23,7 +26,11 @@ def rasterize_pages(pdf_path, sizes, out_dir, runner=subprocess.run) -> dict[int
         if not w or not h:
             continue
         prefix = out_dir / f"page-{i}"
-        r = runner(build_pdftoppm_cmd(pdf_path, i + 1, w, h, prefix), capture_output=True, text=True)
+        try:
+            r = runner(build_pdftoppm_cmd(pdf_path, i + 1, w, h, prefix), capture_output=True, text=True)
+        except OSError as exc:
+            logger.warning("pagerender: rasterization failed (%s); skipping page %d", exc, i)
+            continue
         if getattr(r, "returncode", 0) == 0:
             result[i] = prefix.with_suffix(".png")
     return result

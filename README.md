@@ -49,3 +49,7 @@ With OCR-4 the renderer also preserves attention-colored text (e.g. red "importa
 paragraphs) by sampling the source page rasters, and replaces the first page with the
 original cover image stamped "TRADUZIONE IN ITALIANO". Disable with `--no-color` or
 `--no-cover`.
+
+Note: attention-color is preserved in the **PDF** output; the DOCX keeps the text but
+not the color (cover image works in both). These features require `pdftoppm` from
+**poppler-utils** to be installed on the system.

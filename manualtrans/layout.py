@@ -158,7 +158,13 @@ table {{ border-collapse: collapse; font-size: {profile['body_pt']}pt; }}
 th, td {{ border: 0.5pt solid #888; padding: 2pt 4pt; }}
 .callout {{ border-left: 3pt solid #36c; background: #eef3ff; padding: 4pt 8pt; margin: 6pt 0; }}
 img {{ max-width: 100%; }}
+img.cover {{ width: 100%; display: block; }}
 """
+
+
+def cover_markdown(cover_filename: str) -> str:
+    return (f"![cover]({cover_filename}){{.cover}}\n\n"
+            '<div style="page-break-after: always"></div>')
 
 
 def write_css(profile: dict, path) -> Path:

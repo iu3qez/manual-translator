@@ -68,3 +68,25 @@ def test_header_footer_keep_once():
     out = assemble(d, header_footer_policy="keep_once")
     assert out.count("HEAD") == 1
     assert out.count("FOOT") == 1
+
+
+def test_assemble_with_cover_replaces_page0():
+    from manualtrans.assemble import assemble
+    from manualtrans.models import Doc, Page
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+              pages=[Page(index=0, markdown="# Copertina testo OCR"),
+                     Page(index=1, markdown="Contenuto vero.")])
+    out = assemble(doc, cover="cover.png")
+    assert "![cover](cover.png)" in out
+    assert "Copertina testo OCR" not in out      # page 0 body dropped
+    assert "Contenuto vero." in out              # page 1 kept
+
+
+def test_assemble_without_cover_unchanged():
+    from manualtrans.assemble import assemble
+    from manualtrans.models import Doc, Page
+    doc = Doc(source_pdf="m.pdf", source_hash="H", ocr_model="mistral-ocr-latest",
+              pages=[Page(index=0, markdown="Pagina zero."),
+                     Page(index=1, markdown="Pagina uno.")])
+    out = assemble(doc)
+    assert "Pagina zero." in out and "Pagina uno." in out

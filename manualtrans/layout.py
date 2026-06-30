@@ -65,33 +65,35 @@ def title_block_levels(page, body, thresholds=(1.7, 1.35, 1.15)) -> list[int]:
     return [_level_for_ratio(block_font_size(b) / body, thresholds) for b in titles]
 
 
-def reclassify_headings(en_doc: Doc, it_doc: Doc, thresholds=(1.7, 1.35, 1.15)) -> Doc:
-    out = it_doc.model_copy(deep=True)
-    body = body_font_size(en_doc)
-    if not body:
-        return out
-    reconstructed = skipped = 0
-    for en_page, it_page in zip(en_doc.pages, out.pages):
-        levels = title_block_levels(en_page, body, thresholds)
-        if not levels:
-            continue
-        headings = HEADING_RE.findall(it_page.markdown)
-        if len(levels) != len(headings):
-            # title-block count != heading count → reading-order match is unsafe,
-            # leave the page's levels untouched (and make the skip observable)
-            skipped += 1
-            continue
-        seq = iter(levels)
+# A heading's level comes from its SECTION NUMBER, which survives translation
+# (numbers aren't translated): "1." → h1, "5.2" → h2, "8.1.2" → h3. Far more
+# reliable than font size on a numbered manual. Unnumbered headings (feature
+# sub-titles) become h4: styled as sub-content but kept out of a depth-2/3 TOC.
+_HEADING_NUM_RE = re.compile(r"^(\d+(?:\.\d+)*)\.?\s")
+_UNNUMBERED_LEVEL = 4
 
+
+def heading_level_from_text(text: str) -> int:
+    m = _HEADING_NUM_RE.match(text.strip())
+    if m:
+        return min(4, m.group(1).count(".") + 1)
+    return _UNNUMBERED_LEVEL
+
+
+def reclassify_headings(doc: Doc) -> Doc:
+    """Set each markdown heading's level from its leading section number; this is
+    a numbered manual so the number is the reliable hierarchy signal."""
+    out = doc.model_copy(deep=True)
+    changed = 0
+    for page in out.pages:
         def _sub(m: "re.Match") -> str:
-            return f"{'#' * next(seq)} {m.group(2)}"
+            return f"{'#' * heading_level_from_text(m.group(2))} {m.group(2)}"
 
-        it_page.markdown = HEADING_RE.sub(_sub, it_page.markdown)
-        reconstructed += 1
-    logger.info(
-        "layout: heading levels reconstructed on %d page(s), %d skipped (title/heading count mismatch)",
-        reconstructed, skipped,
-    )
+        new_md = HEADING_RE.sub(_sub, page.markdown)
+        if new_md != page.markdown:
+            changed += 1
+        page.markdown = new_md
+    logger.info("layout: heading levels set from section numbers on %d page(s)", changed)
     return out
 
 

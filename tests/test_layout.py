@@ -44,26 +44,28 @@ def test_title_block_levels_by_ratio():
     assert title_block_levels(page, body=20.0) == [1, 2]
 
 
-def test_reclassify_applies_en_levels_to_it():
-    en = _doc([Page(index=0, markdown="# A\n\n# B\n\nbody", blocks=[
-        Block(type="title", bbox=[0, 10, 10, 50], content="A"),    # h1
-        Block(type="title", bbox=[0, 60, 10, 84], content="B"),    # 24 -> 1.2x -> h3
-        Block(type="text",  bbox=[0, 90, 10, 110], content="body"),
-    ])])
-    it = _doc([Page(index=0, markdown="# A-it\n\n# B-it\n\ncorpo")])
-    out = reclassify_headings(en, it)
-    assert out.pages[0].markdown == "# A-it\n\n### B-it\n\ncorpo"
+def test_reclassify_levels_from_section_numbers():
+    # level = numbering depth: "1." → h1, "4.2" → h2, "8.1.2" → h3; survives any
+    # input level the OCR/translation produced.
+    doc = _doc([Page(index=0, markdown=(
+        "# 1. Panoramica\n\n"
+        "##### 4.2 Modalità operativa\n\n"
+        "# 8.1.2 Dettaglio\n\n"
+        "testo"
+    ))])
+    out = reclassify_headings(doc)
+    assert out.pages[0].markdown == (
+        "# 1. Panoramica\n\n"
+        "## 4.2 Modalità operativa\n\n"
+        "### 8.1.2 Dettaglio\n\n"
+        "testo"
+    )
 
 
-def test_reclassify_skips_on_count_mismatch():
-    en = _doc([Page(index=0, markdown="# A", blocks=[
-        Block(type="title", bbox=[0, 0, 10, 40], content="A"),
-        Block(type="title", bbox=[0, 50, 10, 90], content="extra"),
-        Block(type="text", bbox=[0, 0, 10, 20], content="b"),
-    ])])
-    it = _doc([Page(index=0, markdown="# A-it")])  # 1 heading vs 2 title blocks
-    out = reclassify_headings(en, it)
-    assert out.pages[0].markdown == "# A-it"  # unchanged
+def test_reclassify_unnumbered_heading_becomes_h4():
+    doc = _doc([Page(index=0, markdown="# QMX è altamente portatile\n\ntesto")])
+    out = reclassify_headings(doc)
+    assert out.pages[0].markdown == "#### QMX è altamente portatile\n\ntesto"
 
 
 from manualtrans.layout import strip_ocr_toc

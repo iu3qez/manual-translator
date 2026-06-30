@@ -6,7 +6,10 @@ structure (headings, lists, spec tables, images). Output: PDF (primary) + DOCX.
 ## Prerequisites
 
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
-- `pandoc` and `weasyprint` installed on the system (PDF engine)
+- `pandoc` (system binary; PDF engine backend)
+- `pdftoppm` from **poppler-utils** (system; used for OCR-4 color/cover rasterization)
+- `weasyprint` is installed by `uv sync` (Python dep), but needs system native libs
+  (pango, cairo, gdk-pixbuf) present
 
 ## Setup
 
